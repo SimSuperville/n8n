@@ -7,7 +7,8 @@ import { useRecommendedTemplatesStore } from '../recommendedTemplates.store';
 import { useRouter } from 'vue-router';
 import NodeIcon from '@/app/components/NodeIcon.vue';
 import { useI18n } from '@n8n/i18n';
-import { N8nCard, N8nIcon, N8nTag, N8nText } from '@n8n/design-system';
+import { N8nButton, N8nCard, N8nIcon, N8nTag, N8nText } from '@n8n/design-system';
+import { VIEWS } from '@/app/constants';
 import {
 	keyFromCredentialTypeAndName,
 	normalizeTemplateNodeCredentials,
@@ -77,9 +78,18 @@ const setupTimeMinutes = computed(() => {
 
 // Dummy social proof data
 const isLiked = ref(false);
+const isFollowed = ref(false);
 const dummyLikes = 312;
 const dummyDownloads = 1204;
 const dummyViews = 5432;
+
+// Dummy creator stats
+const dummyTemplateCount = 24;
+const dummyTotalViews = '183k';
+
+function toggleFollow() {
+	isFollowed.value = !isFollowed.value;
+}
 
 function toggleLike() {
 	isLiked.value = !isLiked.value;
@@ -146,23 +156,56 @@ onBeforeUnmount(() => {
 			<N8nText size="large" :bold="true" :class="$style.title">
 				{{ template.name }}
 			</N8nText>
-			<div v-if="template.user" :class="$style.userInfo">
-				<img
-					v-if="template.user.avatar"
-					:src="template.user.avatar"
-					:alt="template.user.name"
-					:class="$style.userAvatar"
-				/>
-				<N8nIcon v-else icon="user" :size="16" />
-				<N8nText size="medium">
-					{{ template.user.name }}
+			<div v-if="template.user" :class="$style.creatorBlock">
+				<div :class="$style.creatorMain">
+					<img
+						v-if="template.user.avatar"
+						:src="template.user.avatar"
+						:alt="template.user.name"
+						:class="$style.creatorAvatar"
+					/>
+					<N8nIcon v-else icon="user" :size="20" />
+					<div :class="$style.creatorDetails">
+						<div :class="$style.creatorNameRow">
+							<N8nText size="medium" :bold="true">
+								{{ template.user.name }}
+							</N8nText>
+							<span v-if="template.user.verified" :class="$style.verifiedBadge">
+								<N8nIcon icon="shield-half" :size="14" />
+							</span>
+						</div>
+						<N8nText size="small" color="text-light"> @{{ template.user.username }} </N8nText>
+						<!-- TODO: add i18n key for creator stats -->
+						<N8nText size="small" color="text-light" :class="$style.creatorStats">
+							{{ dummyTemplateCount }} templates · {{ dummyTotalViews }} total views
+						</N8nText>
+					</div>
+					<N8nButton
+						:variant="isFollowed ? 'ghost' : 'outline'"
+						size="small"
+						:class="$style.followButton"
+						data-testid="creator-follow-button"
+						@click.stop="toggleFollow"
+					>
+						<!-- TODO: add i18n key for follow/following -->
+						{{ isFollowed ? 'Following ✓' : 'Follow' }}
+					</N8nButton>
+				</div>
+				<!-- TODO: add i18n key for "view all templates" link -->
+				<N8nText
+					size="small"
+					color="primary"
+					:class="$style.creatorLink"
+					data-testid="creator-view-all-link"
+					@click.stop="
+						router.push({
+							name: VIEWS.TEMPLATE_CREATOR,
+							params: { username: template.user.username },
+						})
+					"
+				>
+					View all templates by {{ template.user.name }} →
 				</N8nText>
-				<span v-if="template.user.verified" :class="$style.verifiedBadge">
-					<N8nIcon icon="shield-half" :size="16" />
-					<N8nText size="medium">
-						{{ i18n.baseText('templates.card.verified') }}
-					</N8nText>
-				</span>
 			</div>
 			<div v-if="showDetails && template.categories?.length" :class="$style.categories">
 				<N8nTag
@@ -179,7 +222,9 @@ onBeforeUnmount(() => {
 					:class="[$style.socialRow, $style.likeRow, isLiked && $style.liked]"
 					role="button"
 					tabindex="0"
-					:aria-label="isLiked ? i18n.baseText('templates.card.unlike') : i18n.baseText('templates.card.like')"
+					:aria-label="
+						isLiked ? i18n.baseText('templates.card.unlike') : i18n.baseText('templates.card.like')
+					"
 					data-test-id="recommended-template-like-button"
 					@click.stop="toggleLike"
 					@keydown.enter.stop="toggleLike"
@@ -274,25 +319,66 @@ onBeforeUnmount(() => {
 	min-width: 0;
 }
 
-.userInfo {
+.creatorBlock {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing--xs);
+	margin-top: auto;
+	padding-bottom: var(--spacing--xs);
+	border-bottom: var(--border-width) var(--border-style) var(--color--foreground);
+}
+
+.creatorMain {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--spacing--2xs);
+}
+
+.creatorAvatar {
+	width: var(--spacing--xl);
+	height: var(--spacing--xl);
+	border-radius: 50%;
+	object-fit: cover;
+	flex-shrink: 0;
+}
+
+.creatorDetails {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing--5xs);
+	min-width: 0;
+	flex: 1;
+}
+
+.creatorNameRow {
 	display: flex;
 	align-items: center;
 	gap: var(--spacing--4xs);
-	margin-top: auto;
-}
-
-.userAvatar {
-	width: var(--spacing--sm);
-	height: var(--spacing--sm);
-	border-radius: 50%;
-	object-fit: cover;
 }
 
 .verifiedBadge {
 	display: flex;
 	align-items: center;
-	gap: var(--spacing--4xs);
-	margin-left: var(--spacing--xs);
+	color: var(--color--primary);
+}
+
+.creatorStats {
+	font-size: var(--font-size--2xs);
+	line-height: var(--line-height--sm);
+}
+
+.followButton {
+	flex-shrink: 0;
+	align-self: flex-start;
+	margin-left: auto;
+}
+
+.creatorLink {
+	cursor: pointer;
+
+	&:hover {
+		text-decoration: underline;
+	}
 }
 
 .categories {

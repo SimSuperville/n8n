@@ -8,7 +8,10 @@ import { useI18n } from '@n8n/i18n';
 import type { BaseTextKey } from '@n8n/i18n';
 
 import { N8nButton, N8nHeading, N8nIcon, N8nLoading, N8nText } from '@n8n/design-system';
+import { VIEWS } from '@/app/constants';
+import { useRouter } from 'vue-router';
 const i18n = useI18n();
+const router = useRouter();
 
 const nodesToBeShown = 5;
 
@@ -92,7 +95,18 @@ function onCardClick(e: MouseEvent) {
 					<TimeAgo :date="workflow.createdAt" />
 				</N8nText>
 				<div v-if="workflow.user" :class="$style.line" v-text="'|'" />
-				<N8nText v-if="workflow.user" size="small" color="text-light">
+				<N8nText
+					v-if="workflow.user"
+					size="small"
+					color="text-light"
+					:class="$style.authorLink"
+					@click.stop="
+						router.push({
+							name: VIEWS.TEMPLATE_CREATOR,
+							params: { username: workflow.user.username },
+						})
+					"
+				>
 					{{
 						i18n.baseText('template.byAuthor' as BaseTextKey, {
 							interpolate: { name: workflow.user.username },
@@ -192,6 +206,15 @@ function onCardClick(e: MouseEvent) {
 .loading {
 	width: 100%;
 	background-color: var(--color--background--light-3);
+}
+
+.authorLink {
+	cursor: pointer;
+
+	&:hover {
+		color: var(--color--primary);
+		text-decoration: underline;
+	}
 }
 
 .nodesContainer {

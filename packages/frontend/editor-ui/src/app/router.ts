@@ -67,6 +67,8 @@ const SetupWorkflowFromTemplateView = async () =>
 	await import('@/features/workflows/templates/views/SetupWorkflowFromTemplateView.vue');
 const TemplatesSearchView = async () =>
 	await import('@/features/workflows/templates/views/TemplatesSearchView.vue');
+const TemplatesCreatorView = async () =>
+	await import('@/features/workflows/templates/views/TemplatesCreatorView.vue');
 const SettingsUsageAndPlan = async () =>
 	await import('@/features/settings/usage/views/SettingsUsageAndPlan.vue');
 const SettingsSso = async () => await import('@/features/settings/sso/views/SettingsSso.vue');
@@ -148,6 +150,16 @@ export const routes: RouteRecordRaw[] = [
 					};
 				},
 			},
+			getRedirect: getTemplatesRedirect,
+			middleware: ['authenticated'],
+		},
+	},
+	{
+		path: '/templates/creators/:username',
+		name: VIEWS.TEMPLATE_CREATOR,
+		component: TemplatesCreatorView,
+		meta: {
+			templatesEnabled: true,
 			getRedirect: getTemplatesRedirect,
 			middleware: ['authenticated'],
 		},
