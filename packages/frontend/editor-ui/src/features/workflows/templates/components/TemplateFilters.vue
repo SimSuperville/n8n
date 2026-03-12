@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue';
 import type { ITemplatesCategory } from '@n8n/rest-api-client/api/templates';
 import { useI18n } from '@n8n/i18n';
 
-import { N8nCheckbox, N8nLoading, N8nText } from '@n8n/design-system';
+import { N8nCheckbox, N8nIcon, N8nInput, N8nLoading, N8nTag, N8nText } from '@n8n/design-system';
 interface Props {
 	categories?: ITemplatesCategory[];
 	sortOnPopulate?: boolean;
@@ -30,6 +30,36 @@ const i18n = useI18n();
 
 const collapsed = ref(true);
 const sortedCategories = ref<ITemplatesCategory[]>([]);
+
+// Integrations filter state
+const selectedIntegrations = ref<string[]>([]);
+const integrationSearch = ref('');
+const hardcodedIntegrations = ['Slack', 'HubSpot', 'Gmail', 'OpenAI', 'Notion'];
+
+const filteredIntegrations = computed(() => {
+	if (!integrationSearch.value) return hardcodedIntegrations;
+	return hardcodedIntegrations.filter((name) =>
+		name.toLowerCase().includes(integrationSearch.value.toLowerCase()),
+	);
+});
+
+function toggleIntegration(name: string) {
+	const idx = selectedIntegrations.value.indexOf(name);
+	if (idx === -1) {
+		selectedIntegrations.value.push(name);
+	} else {
+		selectedIntegrations.value.splice(idx, 1);
+	}
+}
+
+// Published filter state
+const publishedFilter = ref('any');
+const publishedOptions = [
+	{ value: 'any', key: 'templates.filters.anyTime' },
+	{ value: '30days', key: 'templates.filters.last30Days' },
+	{ value: '6months', key: 'templates.filters.last6Months' },
+	{ value: 'year', key: 'templates.filters.lastYear' },
+] as const;
 
 const allSelected = computed((): boolean => {
 	return props.selected.length === 0;
@@ -129,6 +159,54 @@ watch(
 				+ {{ `${sortedCategories.length - expandLimit} more` }}
 			</N8nText>
 		</div>
+
+		<!-- Integrations filter -->
+		<div :class="$style.section" data-test-id="templates-filter-integrations">
+			<div :class="$style.title" v-text="i18n.baseText('templates.filters.integrations')" />
+			<N8nInput
+				v-model="integrationSearch"
+				size="small"
+				:placeholder="i18n.baseText('templates.filters.searchIntegrations')"
+				clearable
+				:class="$style.sectionInput"
+				data-test-id="templates-filter-integrations-search"
+			>
+				<template #prefix>
+					<N8nIcon icon="search" />
+				</template>
+			</N8nInput>
+			<div :class="$style.integrationTags">
+				<N8nTag
+					v-for="name in filteredIntegrations"
+					:key="name"
+					:text="name"
+					:class="[
+						$style.integrationTag,
+						selectedIntegrations.includes(name) && $style.integrationTagSelected,
+					]"
+					:data-test-id="`templates-filter-integration-${name.toLowerCase()}`"
+					@click="toggleIntegration(name)"
+				/>
+			</div>
+		</div>
+
+		<!-- Published filter -->
+		<div :class="$style.section" data-test-id="templates-filter-published">
+			<div :class="$style.title" v-text="i18n.baseText('templates.filters.published')" />
+			<ul :class="$style.publishedList">
+				<li
+					v-for="option in publishedOptions"
+					:key="option.value"
+					:class="[$style.publishedItem, publishedFilter === option.value && $style.publishedItemActive]"
+					data-test-id="templates-filter-published-option"
+					@click="publishedFilter = option.value"
+				>
+					<N8nText size="small" :color="publishedFilter === option.value ? 'primary' : 'text-base'">
+						{{ i18n.baseText(option.key) }}
+					</N8nText>
+				</li>
+			</ul>
+		</div>
 	</div>
 </template>
 
@@ -154,6 +232,50 @@ watch(
 .button {
 	padding-top: var(--spacing--2xs);
 	cursor: pointer;
+}
+
+.section {
+	margin-top: var(--spacing--lg);
+}
+
+.sectionInput {
+	margin-top: var(--spacing--xs);
+}
+
+.integrationTags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--spacing--4xs);
+	margin-top: var(--spacing--xs);
+}
+
+.integrationTag {
+	cursor: pointer;
+}
+
+.integrationTagSelected {
+	--tag--color--background: var(--color--primary--tint-3);
+	--tag--border-color: var(--color--primary);
+	--tag--color--text: var(--color--primary);
+}
+
+.publishedList {
+	list-style: none;
+	padding-top: var(--spacing--xs);
+}
+
+.publishedItem {
+	padding: var(--spacing--4xs) var(--spacing--2xs);
+	cursor: pointer;
+	border-radius: var(--radius);
+
+	&:hover {
+		background-color: var(--color--foreground--tint-2);
+	}
+}
+
+.publishedItemActive {
+	background-color: var(--color--primary--tint-3);
 }
 </style>
 

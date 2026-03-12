@@ -18,7 +18,16 @@ import { useI18n } from '@n8n/i18n';
 import { useRoute, onBeforeRouteLeave, useRouter } from 'vue-router';
 import { useTelemetry } from '@/app/composables/useTelemetry';
 
-import { N8nButton, N8nHeading, N8nIcon, N8nInput, N8nText } from '@n8n/design-system';
+import {
+	N8nButton,
+	N8nHeading,
+	N8nIcon,
+	N8nInput,
+	N8nOption,
+	N8nSelect,
+	N8nSwitch2,
+	N8nText,
+} from '@n8n/design-system';
 interface ISearchEvent {
 	search_string: string;
 	workflow_results_count: number;
@@ -26,6 +35,16 @@ interface ISearchEvent {
 	categories_applied: ITemplatesCategory[];
 	wf_template_repo_session_id: string;
 }
+
+// Visual-only sort and filter controls
+const sortBy = ref('mostDownloaded');
+const verifiedOnly = ref(false);
+const sortOptions = [
+	{ value: 'mostDownloaded', label: 'templates.sort.mostDownloaded' },
+	{ value: 'mostLiked', label: 'templates.sort.mostLiked' },
+	{ value: 'mostViewed', label: 'templates.sort.mostViewed' },
+	{ value: 'newest', label: 'templates.sort.newest' },
+] as const;
 
 const areCategoriesPrepopulated = ref(false);
 const categories = ref<ITemplatesCategory[]>([]);
@@ -397,6 +416,31 @@ watch(workflows, (newWorkflows) => {
 							@open-collection="onOpenCollection"
 						/>
 					</div>
+					<div :class="$style.controlsBar" data-test-id="templates-controls-bar">
+						<div :class="$style.sortControl">
+							<N8nText size="small" color="text-light">
+								{{ i18n.baseText('templates.sort.label') }}
+							</N8nText>
+							<N8nSelect v-model="sortBy" size="medium" data-test-id="templates-sort-select">
+								<N8nOption
+									v-for="option in sortOptions"
+									:key="option.value"
+									:value="option.value"
+									:label="i18n.baseText(option.label)"
+								/>
+							</N8nSelect>
+						</div>
+						<label :class="$style.verifiedToggle">
+							<N8nSwitch2
+								v-model="verifiedOnly"
+								size="small"
+								data-test-id="templates-verified-toggle"
+							/>
+							<N8nText size="small" color="text-light">
+								{{ i18n.baseText('templates.verifiedOnly') }}
+							</N8nText>
+						</label>
+					</div>
 					<TemplateList
 						:infinite-scroll-enabled="true"
 						:loading="loadingWorkflows"
@@ -451,5 +495,25 @@ watch(workflows, (newWorkflows) => {
 
 .header {
 	margin-bottom: var(--spacing--2xs);
+}
+
+.controlsBar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: var(--spacing--xs) 0;
+}
+
+.sortControl {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing--2xs);
+}
+
+.verifiedToggle {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing--2xs);
+	cursor: pointer;
 }
 </style>

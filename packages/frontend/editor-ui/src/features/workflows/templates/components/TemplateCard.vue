@@ -1,4 +1,5 @@
 <script lang="ts" setup>
+import { computed } from 'vue';
 import { abbreviateNumber } from '@/app/utils/typesUtils';
 import NodeList from '@/app/components/NodeList.vue';
 import TimeAgo from '@/app/components/TimeAgo.vue';
@@ -11,7 +12,7 @@ const i18n = useI18n();
 
 const nodesToBeShown = 5;
 
-withDefaults(
+const props = withDefaults(
 	defineProps<{
 		workflow?: ITemplatesWorkflow;
 		lastItem?: boolean;
@@ -27,6 +28,14 @@ withDefaults(
 		loading: false,
 		simpleView: false,
 	},
+);
+
+// Dummy social proof data - deterministic per workflow id
+const dummyLikes = computed(() =>
+	props.workflow ? ((props.workflow.id * 7 + 13) % 4951) + 50 : 0,
+);
+const dummyDownloads = computed(() =>
+	props.workflow ? ((props.workflow.id * 11 + 37) % 9901) + 100 : 0,
 );
 
 const emit = defineEmits<{
@@ -64,6 +73,18 @@ function onCardClick(e: MouseEvent) {
 					<N8nText size="small" color="text-light">
 						<N8nIcon icon="eye" size="xsmall" />
 						{{ abbreviateNumber(workflow.totalViews) }}
+					</N8nText>
+				</span>
+				<span v-if="workflow.totalViews" data-test-id="template-card-likes">
+					<N8nText size="small" color="text-light">
+						<N8nIcon icon="thumbs-up" size="xsmall" />
+						{{ abbreviateNumber(dummyLikes) }}
+					</N8nText>
+				</span>
+				<span v-if="workflow.totalViews" data-test-id="template-card-downloads">
+					<N8nText size="small" color="text-light">
+						<N8nIcon icon="download" size="xsmall" />
+						{{ abbreviateNumber(dummyDownloads) }}
 					</N8nText>
 				</span>
 				<div v-if="workflow.totalViews" :class="$style.line" v-text="'|'" />
@@ -159,6 +180,7 @@ function onCardClick(e: MouseEvent) {
 .content {
 	display: flex;
 	align-items: center;
+	gap: var(--spacing--3xs);
 }
 
 .line {

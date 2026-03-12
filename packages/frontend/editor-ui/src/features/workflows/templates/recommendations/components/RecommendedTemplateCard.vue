@@ -75,6 +75,16 @@ const setupTimeMinutes = computed(() => {
 	return BASE_TIME + credentialsCount.value * CREDENTIAL_TIME;
 });
 
+// Dummy social proof data
+const isLiked = ref(false);
+const dummyLikes = 312;
+const dummyDownloads = 1204;
+const dummyViews = 5432;
+
+function toggleLike() {
+	isLiked.value = !isLiked.value;
+}
+
 const hasTrackedShown = ref(false);
 const cardRef = ref<InstanceType<typeof N8nCard> | null>(null);
 let observer: IntersectionObserver | null = null;
@@ -162,6 +172,30 @@ onBeforeUnmount(() => {
 					:clickable="false"
 					:class="$style.categoryTag"
 				/>
+			</div>
+			<div :class="$style.socialProof" data-test-id="recommended-template-social-proof">
+				<div :class="$style.socialDivider" />
+				<div
+					:class="[$style.socialRow, $style.likeRow, isLiked && $style.liked]"
+					role="button"
+					tabindex="0"
+					:aria-label="isLiked ? i18n.baseText('templates.card.unlike') : i18n.baseText('templates.card.like')"
+					data-test-id="recommended-template-like-button"
+					@click.stop="toggleLike"
+					@keydown.enter.stop="toggleLike"
+				>
+					<N8nIcon icon="thumbs-up" :size="14" />
+					<N8nText size="small">{{ isLiked ? dummyLikes + 1 : dummyLikes }}</N8nText>
+				</div>
+				<div :class="$style.socialRow">
+					<N8nIcon icon="download" :size="14" color="text-light" />
+					<N8nText size="small" color="text-light">{{ dummyDownloads.toLocaleString() }}</N8nText>
+				</div>
+				<div :class="$style.socialRow">
+					<N8nIcon icon="eye" :size="14" color="text-light" />
+					<N8nText size="small" color="text-light">{{ dummyViews.toLocaleString() }}</N8nText>
+				</div>
+				<div :class="$style.socialDivider" />
 			</div>
 			<div :class="$style.statItem">
 				<div :class="$style.statItemLeft">
@@ -282,5 +316,38 @@ onBeforeUnmount(() => {
 
 .mintGreen {
 	color: var(--color--mint-700);
+}
+
+.socialProof {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing--2xs);
+}
+
+.socialDivider {
+	height: var(--border-width);
+	background-color: var(--color--foreground);
+}
+
+.socialRow {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing--2xs);
+}
+
+.likeRow {
+	cursor: pointer;
+	border-radius: var(--radius);
+	padding: var(--spacing--4xs) var(--spacing--2xs);
+	margin: calc(-1 * var(--spacing--4xs)) calc(-1 * var(--spacing--2xs));
+	transition: background-color 0.15s ease;
+
+	&:hover {
+		background-color: var(--color--foreground--tint-2);
+	}
+}
+
+.liked {
+	color: var(--color--primary);
 }
 </style>
