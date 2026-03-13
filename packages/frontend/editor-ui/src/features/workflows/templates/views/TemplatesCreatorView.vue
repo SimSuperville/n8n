@@ -11,7 +11,7 @@ import { filterTemplateNodes } from '@/app/utils/nodeTypesUtils';
 import NodeIcon from '@/app/components/NodeIcon.vue';
 import type { ITemplatesWorkflow } from '@n8n/rest-api-client/api/templates';
 
-import { N8nHeading, N8nButton, N8nIcon, N8nLoading, N8nText } from '@n8n/design-system';
+import { N8nHeading, N8nButton, N8nIcon, N8nLoading, N8nTag, N8nText } from '@n8n/design-system';
 import type { IconName } from '@n8n/design-system/components/N8nIcon/icons';
 
 const templatesStore = useTemplatesStore();
@@ -80,6 +80,14 @@ function getDummyLikes(id: number) {
 
 function getDummyDownloads(id: number) {
 	return ((id * 11 + 37) % 9901) + 100;
+}
+
+function isPaid(id: number) {
+	return id % 17 === 0 || id % 23 === 0;
+}
+
+function getDummyPrice(id: number) {
+	return `£${((id * 3 + 7) % 16) + 5}`;
 }
 
 onMounted(async () => {
@@ -251,6 +259,12 @@ onMounted(async () => {
 									</N8nText>
 								</div>
 								<div :class="$style.listItemStats">
+									<N8nTag
+										v-if="isPaid(workflow.id)"
+										:text="getDummyPrice(workflow.id)"
+										:class="$style.paidTag"
+										:clickable="false"
+									/>
 									<span v-if="workflow.totalViews" :class="$style.listStat">
 										<N8nIcon icon="eye" size="xsmall" />
 										<N8nText size="small" color="text-light">
@@ -497,6 +511,12 @@ onMounted(async () => {
 	align-items: center;
 	gap: var(--spacing--4xs);
 	color: var(--color--text--tint-2);
+}
+
+.paidTag {
+	--tag--color--background: var(--color--foreground--tint-1);
+	--tag--border-color: var(--color--foreground);
+	--tag--color--text: var(--color--text--tint-1);
 }
 
 .empty {

@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import TemplatesInfoCarousel from '../components/TemplatesInfoCarousel.vue';
 import TemplateFilters from '../components/TemplateFilters.vue';
 import TemplateList from '../components/TemplateList.vue';
+import TemplatePreviewCard from '../components/TemplatePreviewCard.vue';
 import TemplatesView from './TemplatesView.vue';
 
 import type { ITemplatesCategory } from '@n8n/rest-api-client/api/templates';
@@ -88,6 +89,8 @@ const workflows = computed(
 const collections = computed(
 	() => templatesStore.getSearchedCollections(createQueryObject('id')) ?? [],
 );
+
+const recommendedWorkflows = computed(() => workflows.value.slice(0, 6));
 
 const endOfSearchMessage = computed(() => {
 	if (loadingWorkflows.value) {
@@ -441,6 +444,26 @@ watch(workflows, (newWorkflows) => {
 							</N8nText>
 						</label>
 					</div>
+					<div
+						v-if="recommendedWorkflows.length > 0 && !search"
+						:class="$style.recommendedSection"
+						data-test-id="recommended-workflows-section"
+					>
+						<N8nHeading :bold="true" size="large">
+							{{ i18n.baseText('templates.recommended.heading') }}
+						</N8nHeading>
+						<N8nText size="small" color="text-light">
+							{{ i18n.baseText('templates.recommended.subtitle') }}
+						</N8nText>
+						<div :class="$style.recommendedGrid">
+							<TemplatePreviewCard
+								v-for="workflow in recommendedWorkflows"
+								:key="workflow.id"
+								:workflow="workflow"
+								@click="(e) => onOpenTemplate({ event: e, id: workflow.id })"
+							/>
+						</div>
+					</div>
 					<TemplateList
 						:infinite-scroll-enabled="true"
 						:loading="loadingWorkflows"
@@ -515,5 +538,27 @@ watch(workflows, (newWorkflows) => {
 	align-items: center;
 	gap: var(--spacing--2xs);
 	cursor: pointer;
+}
+
+.recommendedSection {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing--2xs);
+	margin-bottom: var(--spacing--xl);
+}
+
+.recommendedGrid {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: var(--spacing--sm);
+	margin-top: var(--spacing--xs);
+
+	@media (max-width: $breakpoint-sm) {
+		grid-template-columns: repeat(2, 1fr);
+	}
+
+	@media (max-width: $breakpoint-xs) {
+		grid-template-columns: 1fr;
+	}
 }
 </style>

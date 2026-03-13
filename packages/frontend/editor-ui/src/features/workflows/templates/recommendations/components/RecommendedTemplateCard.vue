@@ -76,6 +76,13 @@ const setupTimeMinutes = computed(() => {
 	return BASE_TIME + credentialsCount.value * CREDENTIAL_TIME;
 });
 
+const configuredCredentials = computed(() => {
+	const total = credentialsCount.value;
+	if (total === 0) return { configured: 0, total: 0 };
+	const configured = Math.min((props.template.id * 3 + 1) % (total + 1), total);
+	return { configured, total };
+});
+
 // Dummy social proof data
 const isLiked = ref(false);
 const isFollowed = ref(false);
@@ -191,7 +198,6 @@ onBeforeUnmount(() => {
 						{{ isFollowed ? 'Following ✓' : 'Follow' }}
 					</N8nButton>
 				</div>
-				<!-- TODO: add i18n key for "view all templates" link -->
 				<N8nText
 					size="small"
 					color="primary"
@@ -204,7 +210,7 @@ onBeforeUnmount(() => {
 						})
 					"
 				>
-					View all templates by {{ template.user.name }} →
+					{{ i18n.baseText('templates.creatorProfile.open') }} →
 				</N8nText>
 			</div>
 			<div v-if="showDetails && template.categories?.length" :class="$style.categories">
@@ -267,6 +273,21 @@ onBeforeUnmount(() => {
 						:key="nodeType!.name"
 						:size="20"
 						:node-type="nodeType"
+					/>
+				</div>
+			</div>
+			<div v-if="configuredCredentials.total > 0" :class="$style.credentialsStatus">
+				<N8nIcon icon="key" :size="16" />
+				<N8nText size="medium">
+					{{ configuredCredentials.configured }} / {{ configuredCredentials.total }} credentials
+					configured
+				</N8nText>
+				<div :class="$style.credentialsBar">
+					<div
+						:class="$style.credentialsBarFill"
+						:style="{
+							width: `${(configuredCredentials.configured / configuredCredentials.total) * 100}%`,
+						}"
 					/>
 				</div>
 			</div>
@@ -402,6 +423,30 @@ onBeforeUnmount(() => {
 
 .mintGreen {
 	color: var(--color--mint-700);
+}
+
+.credentialsStatus {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing--2xs);
+	flex-wrap: wrap;
+	color: var(--color--text--tint-1);
+}
+
+.credentialsBar {
+	width: 100%;
+	height: 4px;
+	background-color: var(--color--foreground);
+	border-radius: var(--radius);
+	overflow: hidden;
+	margin-top: var(--spacing--4xs);
+}
+
+.credentialsBarFill {
+	height: 100%;
+	background-color: var(--color--success);
+	border-radius: var(--radius);
+	transition: width 0.3s ease;
 }
 
 .socialProof {

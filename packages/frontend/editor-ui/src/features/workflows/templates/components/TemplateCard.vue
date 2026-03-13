@@ -7,7 +7,7 @@ import type { ITemplatesWorkflow } from '@n8n/rest-api-client/api/templates';
 import { useI18n } from '@n8n/i18n';
 import type { BaseTextKey } from '@n8n/i18n';
 
-import { N8nButton, N8nHeading, N8nIcon, N8nLoading, N8nText } from '@n8n/design-system';
+import { N8nButton, N8nHeading, N8nIcon, N8nLoading, N8nTag, N8nText } from '@n8n/design-system';
 import { VIEWS } from '@/app/constants';
 import { useRouter } from 'vue-router';
 const i18n = useI18n();
@@ -41,6 +41,13 @@ const dummyDownloads = computed(() =>
 	props.workflow ? ((props.workflow.id * 11 + 37) % 9901) + 100 : 0,
 );
 
+const isPaid = computed(() =>
+	props.workflow ? props.workflow.id % 17 === 0 || props.workflow.id % 23 === 0 : false,
+);
+const dummyPrice = computed(() =>
+	props.workflow ? `£${((props.workflow.id * 3 + 7) % 16) + 5}` : '',
+);
+
 const emit = defineEmits<{
 	useWorkflow: [e: MouseEvent];
 	click: [e: MouseEvent];
@@ -69,8 +76,22 @@ function onCardClick(e: MouseEvent) {
 		<div v-if="loading" :class="$style.loading">
 			<N8nLoading :rows="2" :shrink-last="false" :loading="loading" />
 		</div>
-		<div v-else-if="workflow">
-			<N8nHeading :bold="true" size="small">{{ workflow.name }}</N8nHeading>
+		<div v-else-if="workflow" :class="$style.cardBody">
+			<div :class="$style.titleRow">
+				<img
+					v-if="workflow.user?.avatar"
+					:src="workflow.user.avatar"
+					:alt="workflow.user.name"
+					:class="$style.creatorAvatar"
+				/>
+				<N8nIcon
+					v-else-if="workflow.user"
+					icon="user"
+					:size="16"
+					:class="$style.creatorAvatarFallback"
+				/>
+				<N8nHeading :bold="true" size="small">{{ workflow.name }}</N8nHeading>
+			</div>
 			<div v-if="!simpleView" :class="$style.content">
 				<span v-if="workflow.totalViews">
 					<N8nText size="small" color="text-light">
@@ -113,6 +134,13 @@ function onCardClick(e: MouseEvent) {
 						})
 					}}</N8nText
 				>
+				<N8nTag
+					v-if="isPaid"
+					:text="dummyPrice"
+					:class="$style.paidTag"
+					:clickable="false"
+					data-test-id="template-card-price-tag"
+				/>
 			</div>
 		</div>
 		<div
@@ -215,6 +243,43 @@ function onCardClick(e: MouseEvent) {
 		color: var(--color--primary);
 		text-decoration: underline;
 	}
+}
+
+.cardBody {
+	min-width: 0;
+	flex: 1;
+}
+
+.titleRow {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing--2xs);
+}
+
+.creatorAvatar {
+	width: 24px;
+	height: 24px;
+	border-radius: 50%;
+	object-fit: cover;
+	flex-shrink: 0;
+}
+
+.creatorAvatarFallback {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	border-radius: 50%;
+	background-color: var(--color--foreground--tint-2);
+	color: var(--color--text--tint-2);
+	flex-shrink: 0;
+}
+
+.paidTag {
+	--tag--color--background: var(--color--foreground--tint-1);
+	--tag--border-color: var(--color--foreground);
+	--tag--color--text: var(--color--text--tint-1);
 }
 
 .nodesContainer {

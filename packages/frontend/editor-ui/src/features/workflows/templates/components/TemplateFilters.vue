@@ -61,6 +61,14 @@ const publishedOptions = [
 	{ value: 'year', key: 'templates.filters.lastYear' },
 ] as const;
 
+// Price filter state
+const priceFilter = ref('all');
+const priceOptions = [
+	{ value: 'all', key: 'templates.filters.priceAll' },
+	{ value: 'free', key: 'templates.filters.priceFree' },
+	{ value: 'paid', key: 'templates.filters.pricePaid' },
+] as const;
+
 const allSelected = computed((): boolean => {
 	return props.selected.length === 0;
 });
@@ -190,6 +198,27 @@ watch(
 			</div>
 		</div>
 
+		<!-- Price filter -->
+		<div :class="$style.section" data-test-id="templates-filter-price">
+			<div :class="$style.title" v-text="i18n.baseText('templates.filters.price')" />
+			<ul :class="$style.publishedList">
+				<li
+					v-for="option in priceOptions"
+					:key="option.value"
+					:class="[
+						$style.publishedItem,
+						priceFilter === option.value && $style.publishedItemActive,
+					]"
+					data-test-id="templates-filter-price-option"
+					@click="priceFilter = option.value"
+				>
+					<N8nText size="small" :color="priceFilter === option.value ? 'primary' : 'text-base'">
+						{{ i18n.baseText(option.key) }}
+					</N8nText>
+				</li>
+			</ul>
+		</div>
+
 		<!-- Published filter -->
 		<div :class="$style.section" data-test-id="templates-filter-published">
 			<div :class="$style.title" v-text="i18n.baseText('templates.filters.published')" />
@@ -197,7 +226,10 @@ watch(
 				<li
 					v-for="option in publishedOptions"
 					:key="option.value"
-					:class="[$style.publishedItem, publishedFilter === option.value && $style.publishedItemActive]"
+					:class="[
+						$style.publishedItem,
+						publishedFilter === option.value && $style.publishedItemActive,
+					]"
 					data-test-id="templates-filter-published-option"
 					@click="publishedFilter = option.value"
 				>
