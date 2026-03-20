@@ -2,7 +2,6 @@
 import TemplateDetailsBlock from './TemplateDetailsBlock.vue';
 import NodeIcon from '@/app/components/NodeIcon.vue';
 import { filterTemplateNodes } from '@/app/utils/nodeTypesUtils';
-import { abbreviateNumber } from '@/app/utils/typesUtils';
 import type {
 	ITemplatesCollection,
 	ITemplatesCollectionFull,
@@ -124,17 +123,6 @@ const navigateToCreator = () => {
 				</span>
 				<N8nText v-else-if="isTemplatesWorkflow(template)" size="small" color="text-base">
 					n8n team
-				</N8nText>
-			</div>
-			<div :class="$style.text">
-				<N8nText
-					v-if="isTemplatesWorkflow(template) && template.totalViews !== 0"
-					size="small"
-					color="text-base"
-				>
-					{{ i18n.baseText('template.details.viewed') }}
-					{{ abbreviateNumber(template.totalViews) }}
-					{{ i18n.baseText('template.details.times') }}
 				</N8nText>
 			</div>
 		</TemplateDetailsBlock>

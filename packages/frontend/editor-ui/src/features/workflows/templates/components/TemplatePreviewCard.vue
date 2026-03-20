@@ -17,7 +17,7 @@ const emit = defineEmits<{
 
 const filteredNodes = computed(() => filterTemplateNodes(props.workflow.nodes).slice(0, 6));
 
-const dummyLikes = computed(() => ((props.workflow.id * 7 + 13) % 4951) + 50);
+const dummyStarRating = computed(() => (((props.workflow.id * 7 + 13) % 13) / 10 + 3.8).toFixed(1));
 const dummyDownloads = computed(() => ((props.workflow.id * 11 + 37) % 9901) + 100);
 </script>
 
@@ -35,16 +35,10 @@ const dummyDownloads = computed(() => ((props.workflow.id * 11 + 37) % 9901) + 1
 				{{ workflow.name }}
 			</N8nHeading>
 			<div :class="$style.stats">
-				<span v-if="workflow.totalViews" :class="$style.stat">
-					<N8nIcon icon="eye" size="xsmall" />
-					<N8nText size="small" color="text-light">
-						{{ abbreviateNumber(workflow.totalViews) }}
-					</N8nText>
-				</span>
 				<span :class="$style.stat">
-					<N8nIcon icon="thumbs-up" size="xsmall" />
+					<N8nIcon icon="sparkles" size="xsmall" />
 					<N8nText size="small" color="text-light">
-						{{ abbreviateNumber(dummyLikes) }}
+						{{ dummyStarRating }}
 					</N8nText>
 				</span>
 				<span :class="$style.stat">

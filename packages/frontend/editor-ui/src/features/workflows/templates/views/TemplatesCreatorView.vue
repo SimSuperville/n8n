@@ -37,14 +37,6 @@ const creatorInfo = computed(() => {
 	return first.user;
 });
 
-const totalViews = computed(() =>
-	creatorWorkflows.value.reduce((sum, w) => sum + (w.totalViews || 0), 0),
-);
-
-const totalLikes = computed(() =>
-	creatorWorkflows.value.reduce((sum, w) => sum + (((w.id * 7 + 13) % 4951) + 50), 0),
-);
-
 const totalDownloads = computed(() =>
 	creatorWorkflows.value.reduce((sum, w) => sum + (((w.id * 11 + 37) % 9901) + 100), 0),
 );
@@ -153,7 +145,7 @@ onMounted(async () => {
 						<!-- Stats -->
 						<div :class="$style.statsSection">
 							<div :class="$style.statItem">
-								<N8nIcon icon="file-lines" :size="16" :class="$style.statIcon" />
+								<N8nIcon icon="file-text" :size="16" :class="$style.statIcon" />
 								<div :class="$style.statContent">
 									<N8nText :bold="true" size="medium">
 										{{ creatorWorkflows.length }}
@@ -162,21 +154,10 @@ onMounted(async () => {
 								</div>
 							</div>
 							<div :class="$style.statItem">
-								<N8nIcon icon="eye" :size="16" :class="$style.statIcon" />
+								<N8nIcon icon="sparkles" :size="16" :class="$style.statIcon" />
 								<div :class="$style.statContent">
-									<N8nText :bold="true" size="medium">
-										{{ abbreviateNumber(totalViews) }}
-									</N8nText>
-									<N8nText size="small" color="text-light">Views</N8nText>
-								</div>
-							</div>
-							<div :class="$style.statItem">
-								<N8nIcon icon="thumbs-up" :size="16" :class="$style.statIcon" />
-								<div :class="$style.statContent">
-									<N8nText :bold="true" size="medium">
-										{{ abbreviateNumber(totalLikes) }}
-									</N8nText>
-									<N8nText size="small" color="text-light">Likes</N8nText>
+									<N8nText :bold="true" size="medium"> 4.7 </N8nText>
+									<N8nText size="small" color="text-light">Rating</N8nText>
 								</div>
 							</div>
 							<div :class="$style.statItem">

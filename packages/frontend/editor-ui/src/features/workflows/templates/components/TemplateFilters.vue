@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import type { ITemplatesCategory } from '@n8n/rest-api-client/api/templates';
 import { useI18n } from '@n8n/i18n';
+import type { BaseTextKey } from '@n8n/i18n';
 
 import { N8nCheckbox, N8nIcon, N8nInput, N8nLoading, N8nTag, N8nText } from '@n8n/design-system';
 interface Props {
@@ -28,7 +29,6 @@ const emit = defineEmits<{
 
 const i18n = useI18n();
 
-const collapsed = ref(true);
 const sortedCategories = ref<ITemplatesCategory[]>([]);
 
 // Integrations filter state
@@ -61,13 +61,64 @@ const publishedOptions = [
 	{ value: 'year', key: 'templates.filters.lastYear' },
 ] as const;
 
-// Price filter state
-const priceFilter = ref('all');
-const priceOptions = [
-	{ value: 'all', key: 'templates.filters.priceAll' },
-	{ value: 'free', key: 'templates.filters.priceFree' },
-	{ value: 'paid', key: 'templates.filters.pricePaid' },
-] as const;
+// Followed creators state
+const followedCreators = ref<string[]>([]);
+const dummyCreators = [
+	{ id: 'n8n-team', name: 'n8n team', avatar: '' },
+	{ id: 'ai-workflow-pro', name: 'AI Workflow Pro', avatar: '' },
+	{ id: 'automate-io', name: 'AutomateIO', avatar: '' },
+	{ id: 'dataflow-labs', name: 'DataFlow Labs', avatar: '' },
+	{ id: 'workflow-wizards', name: 'Workflow Wizards', avatar: '' },
+];
+
+function toggleCreator(id: string) {
+	const idx = followedCreators.value.indexOf(id);
+	if (idx === -1) {
+		followedCreators.value.push(id);
+	} else {
+		followedCreators.value.splice(idx, 1);
+	}
+}
+
+// Nested category groups
+const categoryGroups = [
+	{
+		name: 'AI & Machine Learning',
+		keywords: ['ai', 'machine learning', 'langchain', 'openai', 'llm'],
+	},
+	{ name: 'Sales & Marketing', keywords: ['sales', 'marketing', 'crm', 'hubspot', 'lead'] },
+	{ name: 'DevOps & IT', keywords: ['devops', 'it', 'ops', 'engineering', 'infrastructure'] },
+	{ name: 'Communication', keywords: ['communication', 'slack', 'email', 'notification', 'chat'] },
+	{ name: 'Data & Analytics', keywords: ['data', 'analytics', 'reporting', 'database'] },
+	{ name: 'Productivity', keywords: ['productivity', 'project management', 'task', 'automation'] },
+];
+
+const expandedGroups = ref<string[]>([]);
+
+function toggleGroup(groupName: string) {
+	const idx = expandedGroups.value.indexOf(groupName);
+	if (idx === -1) {
+		expandedGroups.value.push(groupName);
+	} else {
+		expandedGroups.value.splice(idx, 1);
+	}
+}
+
+function getCategoriesForGroup(group: { name: string; keywords: string[] }) {
+	return sortedCategories.value.filter((cat) =>
+		group.keywords.some((kw) => cat.name.toLowerCase().includes(kw)),
+	);
+}
+
+const uncategorizedCategories = computed(() => {
+	const allGrouped = categoryGroups.flatMap((g) =>
+		sortedCategories.value.filter((cat) =>
+			g.keywords.some((kw) => cat.name.toLowerCase().includes(kw)),
+		),
+	);
+	const groupedIds = new Set(allGrouped.map((c) => c.id));
+	return sortedCategories.value.filter((c) => !groupedIds.has(c.id));
+});
 
 const allSelected = computed((): boolean => {
 	return props.selected.length === 0;
@@ -83,10 +134,6 @@ function sortCategories() {
 		sortedCategories.value = selectedCategories.concat(notSelectedCategories);
 	}
 }
-function collapseAction() {
-	collapsed.value = false;
-}
-
 function handleCheckboxChanged(value: boolean, selectedCategory: ITemplatesCategory) {
 	if (value) {
 		emit('select', selectedCategory);
@@ -142,30 +189,75 @@ watch(
 					@update:model-value="() => resetCategories()"
 				/>
 			</li>
-			<li
-				v-for="(category, index) in collapsed
-					? sortedCategories.slice(0, expandLimit)
-					: sortedCategories"
-				:key="index"
-				:class="$style.item"
-				:data-test-id="`template-filter-${category.name.toLowerCase().replaceAll(' ', '-')}`"
-			>
-				<N8nCheckbox
-					:model-value="isSelected(category)"
-					:label="category.name"
-					@update:model-value="(value: boolean) => handleCheckboxChanged(value, category)"
-				/>
-			</li>
 		</ul>
-		<div
-			v-if="sortedCategories.length > expandLimit && collapsed && !loading"
-			:class="$style.button"
-			data-test-id="expand-categories-button"
-			@click="collapseAction"
-		>
-			<N8nText size="small" color="primary">
-				+ {{ `${sortedCategories.length - expandLimit} more` }}
-			</N8nText>
+		<div v-if="!loading" :class="$style.groupedCategories">
+			<div v-for="group in categoryGroups" :key="group.name" :class="$style.categoryGroup">
+				<div
+					v-if="getCategoriesForGroup(group).length > 0"
+					:class="$style.groupHeader"
+					@click="toggleGroup(group.name)"
+				>
+					<N8nIcon
+						:icon="expandedGroups.includes(group.name) ? 'chevron-down' : 'chevron-right'"
+						size="xsmall"
+					/>
+					<N8nText size="small" :bold="true" color="text-base">
+						{{ group.name }}
+					</N8nText>
+				</div>
+				<ul v-if="expandedGroups.includes(group.name)" :class="$style.nestedList">
+					<li
+						v-for="category in getCategoriesForGroup(group)"
+						:key="category.id"
+						:class="$style.nestedItem"
+					>
+						<N8nCheckbox
+							:model-value="isSelected(category)"
+							:label="category.name"
+							@update:model-value="(value: boolean) => handleCheckboxChanged(value, category)"
+						/>
+					</li>
+				</ul>
+			</div>
+			<div v-if="uncategorizedCategories.length > 0" :class="$style.categoryGroup">
+				<div :class="$style.groupHeader" @click="toggleGroup('Other')">
+					<N8nIcon
+						:icon="expandedGroups.includes('Other') ? 'chevron-down' : 'chevron-right'"
+						size="xsmall"
+					/>
+					<N8nText size="small" :bold="true" color="text-base"> Other </N8nText>
+				</div>
+				<ul v-if="expandedGroups.includes('Other')" :class="$style.nestedList">
+					<li
+						v-for="category in uncategorizedCategories"
+						:key="category.id"
+						:class="$style.nestedItem"
+					>
+						<N8nCheckbox
+							:model-value="isSelected(category)"
+							:label="category.name"
+							@update:model-value="(value: boolean) => handleCheckboxChanged(value, category)"
+						/>
+					</li>
+				</ul>
+			</div>
+		</div>
+
+		<!-- Followed Creators -->
+		<div :class="$style.section" data-test-id="templates-filter-followed-creators">
+			<div
+				:class="$style.title"
+				v-text="i18n.baseText('templates.filters.followedCreators' as BaseTextKey)"
+			/>
+			<ul :class="$style.creatorList">
+				<li v-for="creator in dummyCreators" :key="creator.id" :class="$style.creatorItem">
+					<N8nCheckbox
+						:model-value="followedCreators.includes(creator.id)"
+						:label="creator.name"
+						@update:model-value="() => toggleCreator(creator.id)"
+					/>
+				</li>
+			</ul>
 		</div>
 
 		<!-- Integrations filter -->
@@ -196,27 +288,6 @@ watch(
 					@click="toggleIntegration(name)"
 				/>
 			</div>
-		</div>
-
-		<!-- Price filter -->
-		<div :class="$style.section" data-test-id="templates-filter-price">
-			<div :class="$style.title" v-text="i18n.baseText('templates.filters.price')" />
-			<ul :class="$style.publishedList">
-				<li
-					v-for="option in priceOptions"
-					:key="option.value"
-					:class="[
-						$style.publishedItem,
-						priceFilter === option.value && $style.publishedItemActive,
-					]"
-					data-test-id="templates-filter-price-option"
-					@click="priceFilter = option.value"
-				>
-					<N8nText size="small" :color="priceFilter === option.value ? 'primary' : 'text-base'">
-						{{ i18n.baseText(option.key) }}
-					</N8nText>
-				</li>
-			</ul>
 		</div>
 
 		<!-- Published filter -->
@@ -261,9 +332,44 @@ watch(
 	}
 }
 
-.button {
+.groupedCategories {
 	padding-top: var(--spacing--2xs);
+}
+
+.categoryGroup {
+	margin-bottom: var(--spacing--4xs);
+}
+
+.groupHeader {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing--4xs);
+	padding: var(--spacing--4xs) 0;
 	cursor: pointer;
+	border-radius: var(--radius);
+
+	&:hover {
+		background-color: var(--color--foreground--tint-2);
+	}
+}
+
+.nestedList {
+	list-style: none;
+	padding-left: var(--spacing--sm);
+}
+
+.nestedItem {
+	margin-top: var(--spacing--4xs);
+	font-size: var(--font-size--2xs);
+}
+
+.creatorList {
+	list-style: none;
+	padding-top: var(--spacing--xs);
+}
+
+.creatorItem {
+	margin-top: var(--spacing--2xs);
 }
 
 .section {

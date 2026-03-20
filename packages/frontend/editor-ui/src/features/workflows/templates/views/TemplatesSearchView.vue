@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import TemplatesInfoCarousel from '../components/TemplatesInfoCarousel.vue';
 import TemplateFilters from '../components/TemplateFilters.vue';
 import TemplateList from '../components/TemplateList.vue';
 import TemplatePreviewCard from '../components/TemplatePreviewCard.vue';
@@ -16,6 +15,7 @@ import { useToast } from '@/app/composables/useToast';
 import { useDebounce } from '@/app/composables/useDebounce';
 import { useDocumentTitle } from '@/app/composables/useDocumentTitle';
 import { useI18n } from '@n8n/i18n';
+import type { BaseTextKey } from '@n8n/i18n';
 import { useRoute, onBeforeRouteLeave, useRouter } from 'vue-router';
 import { useTelemetry } from '@/app/composables/useTelemetry';
 
@@ -26,7 +26,6 @@ import {
 	N8nInput,
 	N8nOption,
 	N8nSelect,
-	N8nSwitch2,
 	N8nText,
 } from '@n8n/design-system';
 interface ISearchEvent {
@@ -39,13 +38,83 @@ interface ISearchEvent {
 
 // Visual-only sort and filter controls
 const sortBy = ref('mostDownloaded');
-const verifiedOnly = ref(false);
 const sortOptions = [
 	{ value: 'mostDownloaded', label: 'templates.sort.mostDownloaded' },
-	{ value: 'mostLiked', label: 'templates.sort.mostLiked' },
-	{ value: 'mostViewed', label: 'templates.sort.mostViewed' },
+	{ value: 'topRated', label: 'templates.sort.topRated' },
 	{ value: 'newest', label: 'templates.sort.newest' },
 ] as const;
+
+// Integration selector state
+const integrationCategories = [
+	{
+		id: 'chatModel',
+		labelKey: 'templates.integrationSelector.chatModel' as const,
+		icon: 'bot' as const,
+		options: [
+			{ id: 'openai', name: 'OpenAI', icon: 'brain' as const },
+			{ id: 'gemini', name: 'Gemini', icon: 'gem' as const },
+			{ id: 'anthropic', name: 'Anthropic', icon: 'anthropic' as const },
+			{ id: 'groq', name: 'Groq', icon: 'zap' as const },
+			{ id: 'ollama', name: 'Ollama', icon: 'server' as const },
+		],
+	},
+	{
+		id: 'email',
+		labelKey: 'templates.integrationSelector.email' as const,
+		icon: 'mail' as const,
+		options: [
+			{ id: 'gmail', name: 'Gmail', icon: 'mail' as const },
+			{ id: 'outlook', name: 'Outlook', icon: 'inbox' as const },
+		],
+	},
+	{
+		id: 'documentStorage',
+		labelKey: 'templates.integrationSelector.documentStorage' as const,
+		icon: 'folder-open' as const,
+		options: [
+			{ id: 'notion', name: 'Notion', icon: 'book' as const },
+			{ id: 'google-drive', name: 'Google Drive', icon: 'cloud' as const },
+			{ id: 'google-sheets', name: 'Google Sheets', icon: 'table' as const },
+			{ id: 'airtable', name: 'Airtable', icon: 'database' as const },
+		],
+	},
+	{
+		id: 'communication',
+		labelKey: 'templates.integrationSelector.communication' as const,
+		icon: 'messages-square' as const,
+		options: [
+			{ id: 'slack', name: 'Slack', icon: 'hash' as const },
+			{ id: 'whatsapp', name: 'WhatsApp', icon: 'message-circle' as const },
+			{ id: 'telegram', name: 'Telegram', icon: 'send' as const },
+			{ id: 'discord', name: 'Discord', icon: 'globe' as const },
+		],
+	},
+];
+
+const selectedIntegrations = ref<Record<string, string[]>>({});
+const showRecommended = ref(false);
+
+const hasSelectedIntegrations = computed(() =>
+	Object.values(selectedIntegrations.value).some((arr) => arr.length > 0),
+);
+
+function toggleIntegrationOption(categoryId: string, optionId: string) {
+	if (!selectedIntegrations.value[categoryId]) {
+		selectedIntegrations.value[categoryId] = [];
+	}
+	const idx = selectedIntegrations.value[categoryId].indexOf(optionId);
+	if (idx === -1) {
+		selectedIntegrations.value[categoryId].push(optionId);
+	} else {
+		selectedIntegrations.value[categoryId].splice(idx, 1);
+	}
+	showRecommended.value = false;
+}
+
+function onShowRecommended() {
+	showRecommended.value = true;
+	scrollTo(0);
+}
 
 const areCategoriesPrepopulated = ref(false);
 const categories = ref<ITemplatesCategory[]>([]);
@@ -205,10 +274,6 @@ const navigateTo = (e: MouseEvent, page: string, id: number) => {
 	} else {
 		void router.push({ name: page, params: { id } });
 	}
-};
-
-const onOpenCollection = ({ event, id }: { event: MouseEvent; id: number }) => {
-	navigateTo(event, VIEWS.COLLECTION, id);
 };
 
 const onOpenTemplate = ({ event, id }: { event: MouseEvent; id: number }) => {
@@ -390,6 +455,53 @@ watch(workflows, (newWorkflows) => {
 					/>
 				</div>
 				<div :class="$style.search">
+					<!-- Integration Selector -->
+					<div :class="$style.integrationSelector" data-test-id="integration-selector">
+						<N8nHeading :bold="true" size="large">
+							{{ i18n.baseText('templates.integrationSelector.heading' as BaseTextKey) }}
+						</N8nHeading>
+						<N8nText size="small" color="text-light">
+							{{ i18n.baseText('templates.integrationSelector.subtitle' as BaseTextKey) }}
+						</N8nText>
+						<div :class="$style.integrationGrid">
+							<div
+								v-for="category in integrationCategories"
+								:key="category.id"
+								:class="$style.integrationCategory"
+							>
+								<div :class="$style.integrationCategoryHeader">
+									<N8nIcon :icon="category.icon" size="medium" />
+									<N8nText size="small" :bold="true">
+										{{ i18n.baseText(category.labelKey as BaseTextKey) }}
+									</N8nText>
+								</div>
+								<div :class="$style.integrationOptions">
+									<button
+										v-for="option in category.options"
+										:key="option.id"
+										:class="[
+											$style.integrationChip,
+											selectedIntegrations[category.id]?.includes(option.id) &&
+												$style.integrationChipSelected,
+										]"
+										:data-test-id="`integration-chip-${option.id}`"
+										@click="toggleIntegrationOption(category.id, option.id)"
+									>
+										<N8nIcon :icon="option.icon" size="small" />
+										<N8nText size="small">{{ option.name }}</N8nText>
+									</button>
+								</div>
+							</div>
+						</div>
+						<div v-if="hasSelectedIntegrations" :class="$style.integrationCta">
+							<N8nButton
+								size="large"
+								:label="i18n.baseText('templates.integrationSelector.cta' as BaseTextKey)"
+								data-test-id="show-recommended-cta"
+								@click="onShowRecommended"
+							/>
+						</div>
+					</div>
 					<N8nInput
 						:model-value="search"
 						:placeholder="i18n.baseText('templates.searchPlaceholder')"
@@ -402,23 +514,6 @@ watch(workflows, (newWorkflows) => {
 							<N8nIcon icon="search" />
 						</template>
 					</N8nInput>
-					<div v-show="collections.length || loadingCollections" :class="$style.carouselContainer">
-						<div :class="$style.header">
-							<N8nHeading :bold="true" size="medium" color="text-light">
-								{{ i18n.baseText('templates.collections') }}
-								<span
-									v-if="!loadingCollections"
-									data-test-id="collection-count-label"
-									v-text="`(${collections.length})`"
-								/>
-							</N8nHeading>
-						</div>
-						<TemplatesInfoCarousel
-							:collections="collections"
-							:loading="loadingCollections"
-							@open-collection="onOpenCollection"
-						/>
-					</div>
 					<div :class="$style.controlsBar" data-test-id="templates-controls-bar">
 						<div :class="$style.sortControl">
 							<N8nText size="small" color="text-light">
@@ -429,23 +524,13 @@ watch(workflows, (newWorkflows) => {
 									v-for="option in sortOptions"
 									:key="option.value"
 									:value="option.value"
-									:label="i18n.baseText(option.label)"
+									:label="i18n.baseText(option.label as BaseTextKey)"
 								/>
 							</N8nSelect>
 						</div>
-						<label :class="$style.verifiedToggle">
-							<N8nSwitch2
-								v-model="verifiedOnly"
-								size="small"
-								data-test-id="templates-verified-toggle"
-							/>
-							<N8nText size="small" color="text-light">
-								{{ i18n.baseText('templates.verifiedOnly') }}
-							</N8nText>
-						</label>
 					</div>
 					<div
-						v-if="recommendedWorkflows.length > 0 && !search"
+						v-if="showRecommended && recommendedWorkflows.length > 0 && !search"
 						:class="$style.recommendedSection"
 						data-test-id="recommended-workflows-section"
 					>
@@ -533,11 +618,74 @@ watch(workflows, (newWorkflows) => {
 	gap: var(--spacing--2xs);
 }
 
-.verifiedToggle {
+.integrationSelector {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing--xs);
+	padding: var(--spacing--lg);
+	border: var(--border);
+	border-radius: var(--radius--lg);
+	background-color: var(--color--background--light-3);
+	margin-bottom: var(--spacing--lg);
+}
+
+.integrationGrid {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: var(--spacing--sm);
+
+	@media (max-width: $breakpoint-xs) {
+		grid-template-columns: 1fr;
+	}
+}
+
+.integrationCategory {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing--2xs);
+}
+
+.integrationCategoryHeader {
 	display: flex;
 	align-items: center;
 	gap: var(--spacing--2xs);
+	color: var(--color--text);
+}
+
+.integrationOptions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--spacing--4xs);
+}
+
+.integrationChip {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing--4xs);
+	padding: var(--spacing--4xs) var(--spacing--xs);
+	border: var(--border);
+	border-radius: var(--radius--xl);
+	background: var(--color--background--light-3);
 	cursor: pointer;
+	transition: all 0.15s ease;
+	font-family: var(--font-family);
+
+	&:hover {
+		border-color: var(--color--primary--tint-1);
+		background-color: var(--color--primary--tint-3);
+	}
+}
+
+.integrationChipSelected {
+	border-color: var(--color--primary);
+	background-color: var(--color--primary--tint-3);
+	color: var(--color--primary);
+}
+
+.integrationCta {
+	display: flex;
+	justify-content: center;
+	padding-top: var(--spacing--xs);
 }
 
 .recommendedSection {

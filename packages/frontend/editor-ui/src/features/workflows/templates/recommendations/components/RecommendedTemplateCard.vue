@@ -84,11 +84,9 @@ const configuredCredentials = computed(() => {
 });
 
 // Dummy social proof data
-const isLiked = ref(false);
 const isFollowed = ref(false);
-const dummyLikes = 312;
+const dummyStarRating = computed(() => (((props.template.id * 7 + 13) % 13) / 10 + 3.8).toFixed(1));
 const dummyDownloads = 1204;
-const dummyViews = 5432;
 
 // Dummy creator stats
 const dummyTemplateCount = 24;
@@ -96,10 +94,6 @@ const dummyTotalViews = '183k';
 
 function toggleFollow() {
 	isFollowed.value = !isFollowed.value;
-}
-
-function toggleLike() {
-	isLiked.value = !isLiked.value;
 }
 
 const hasTrackedShown = ref(false);
@@ -224,27 +218,13 @@ onBeforeUnmount(() => {
 			</div>
 			<div :class="$style.socialProof" data-test-id="recommended-template-social-proof">
 				<div :class="$style.socialDivider" />
-				<div
-					:class="[$style.socialRow, $style.likeRow, isLiked && $style.liked]"
-					role="button"
-					tabindex="0"
-					:aria-label="
-						isLiked ? i18n.baseText('templates.card.unlike') : i18n.baseText('templates.card.like')
-					"
-					data-test-id="recommended-template-like-button"
-					@click.stop="toggleLike"
-					@keydown.enter.stop="toggleLike"
-				>
-					<N8nIcon icon="thumbs-up" :size="14" />
-					<N8nText size="small">{{ isLiked ? dummyLikes + 1 : dummyLikes }}</N8nText>
+				<div :class="$style.socialRow">
+					<N8nIcon icon="sparkles" :size="14" color="text-light" />
+					<N8nText size="small" color="text-light">{{ dummyStarRating }}</N8nText>
 				</div>
 				<div :class="$style.socialRow">
 					<N8nIcon icon="download" :size="14" color="text-light" />
 					<N8nText size="small" color="text-light">{{ dummyDownloads.toLocaleString() }}</N8nText>
-				</div>
-				<div :class="$style.socialRow">
-					<N8nIcon icon="eye" :size="14" color="text-light" />
-					<N8nText size="small" color="text-light">{{ dummyViews.toLocaleString() }}</N8nText>
 				</div>
 				<div :class="$style.socialDivider" />
 			</div>
@@ -277,7 +257,7 @@ onBeforeUnmount(() => {
 				</div>
 			</div>
 			<div v-if="configuredCredentials.total > 0" :class="$style.credentialsStatus">
-				<N8nIcon icon="key" :size="16" />
+				<N8nIcon icon="key-round" :size="16" />
 				<N8nText size="medium">
 					{{ configuredCredentials.configured }} / {{ configuredCredentials.total }} credentials
 					configured
@@ -464,21 +444,5 @@ onBeforeUnmount(() => {
 	display: flex;
 	align-items: center;
 	gap: var(--spacing--2xs);
-}
-
-.likeRow {
-	cursor: pointer;
-	border-radius: var(--radius);
-	padding: var(--spacing--4xs) var(--spacing--2xs);
-	margin: calc(-1 * var(--spacing--4xs)) calc(-1 * var(--spacing--2xs));
-	transition: background-color 0.15s ease;
-
-	&:hover {
-		background-color: var(--color--foreground--tint-2);
-	}
-}
-
-.liked {
-	color: var(--color--primary);
 }
 </style>
