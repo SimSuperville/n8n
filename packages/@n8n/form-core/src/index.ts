@@ -10,6 +10,12 @@ export type * from './registry/types';
 export { getFieldType, listFieldTypes, registerFieldType } from './registry';
 export { getRatingBounds, type RatingConfig } from './registry/fields/rating-field';
 export {
+	getOpinionScaleBounds,
+	type OpinionScaleConfig,
+	type StatementConfig,
+	type YesNoConfig,
+} from './registry/fields/phase3-fields';
+export {
 	evaluateCondition,
 	evaluateRule,
 	evaluateVisibility,

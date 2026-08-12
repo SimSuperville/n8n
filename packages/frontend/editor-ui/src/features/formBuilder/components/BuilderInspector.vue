@@ -15,6 +15,7 @@ import {
 } from '@n8n/design-system';
 
 import type { useFormBuilder } from '../composables/useFormBuilder';
+import LogicSection from './LogicSection.vue';
 
 const props = defineProps<{
 	builder: ReturnType<typeof useFormBuilder>;
@@ -91,7 +92,20 @@ const widthOptions = ['narrow', 'default', 'wide'] as const;
 					</N8nInputLabel>
 				</div>
 				<div
-					v-if="!['radio', 'checkbox', 'dropdown', 'file', 'html', 'date'].includes(element.type)"
+					v-if="
+						![
+							'radio',
+							'checkbox',
+							'dropdown',
+							'file',
+							'html',
+							'date',
+							'rating',
+							'opinionScale',
+							'yesNo',
+							'statement',
+						].includes(element.type)
+					"
 					:class="$style.row"
 				>
 					<N8nInputLabel label="Placeholder" size="small">
@@ -107,7 +121,7 @@ const widthOptions = ['narrow', 'default', 'wide'] as const;
 						<N8nInput v-model="element.key" size="small" :placeholder="element.label" />
 					</N8nInputLabel>
 				</div>
-				<div v-if="element.type !== 'html'" :class="$style.rowInline">
+				<div v-if="!['html', 'statement'].includes(element.type)" :class="$style.rowInline">
 					<N8nText size="small">Required</N8nText>
 					<N8nSwitch v-model="element.required" size="small" />
 				</div>
@@ -158,8 +172,8 @@ const widthOptions = ['narrow', 'default', 'wide'] as const;
 					</div>
 				</template>
 
-				<template v-if="element.type === 'rating' && elementConfig">
-					<div :class="$style.row">
+				<template v-if="['rating', 'opinionScale'].includes(element.type) && elementConfig">
+					<div v-if="element.type === 'rating'" :class="$style.row">
 						<N8nInputLabel label="Style" size="small">
 							<N8nSelect
 								:model-value="(elementConfig.style as string | undefined) ?? 'scale'"
@@ -172,9 +186,12 @@ const widthOptions = ['narrow', 'default', 'wide'] as const;
 						</N8nInputLabel>
 					</div>
 					<div :class="$style.row">
-						<N8nInputLabel label="Steps" size="small">
+						<N8nInputLabel label="Steps up to" size="small">
 							<N8nInput
-								:model-value="(elementConfig.max as number | undefined)?.toString() ?? '5'"
+								:model-value="
+									(elementConfig.max as number | undefined)?.toString() ??
+									(element.type === 'opinionScale' ? '10' : '5')
+								"
 								size="small"
 								type="number"
 								@update:model-value="elementConfig.max = $event === '' ? undefined : Number($event)"
@@ -222,6 +239,41 @@ const widthOptions = ['narrow', 'default', 'wide'] as const;
 					</div>
 				</template>
 
+				<template v-if="element.type === 'yesNo' && elementConfig">
+					<div :class="$style.rowSplit">
+						<N8nInputLabel label="Yes label" size="small">
+							<N8nInput
+								:model-value="(elementConfig.yesLabel as string | undefined) ?? ''"
+								size="small"
+								placeholder="Yes"
+								@update:model-value="elementConfig.yesLabel = $event"
+							/>
+						</N8nInputLabel>
+						<N8nInputLabel label="No label" size="small">
+							<N8nInput
+								:model-value="(elementConfig.noLabel as string | undefined) ?? ''"
+								size="small"
+								placeholder="No"
+								@update:model-value="elementConfig.noLabel = $event"
+							/>
+						</N8nInputLabel>
+					</div>
+				</template>
+
+				<template v-if="element.type === 'statement' && elementConfig">
+					<div :class="$style.row">
+						<N8nInputLabel label="Text" size="small">
+							<N8nInput
+								:model-value="(elementConfig.text as string | undefined) ?? ''"
+								size="small"
+								type="textarea"
+								:rows="4"
+								@update:model-value="elementConfig.text = $event"
+							/>
+						</N8nInputLabel>
+					</div>
+				</template>
+
 				<template v-if="element.type === 'html' && elementConfig">
 					<div :class="$style.row">
 						<N8nInputLabel label="HTML content" size="small">
@@ -235,6 +287,8 @@ const widthOptions = ['narrow', 'default', 'wide'] as const;
 						</N8nInputLabel>
 					</div>
 				</template>
+
+				<LogicSection :builder="builder" :element="element" />
 
 				<div :class="$style.actions">
 					<N8nButton

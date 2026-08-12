@@ -6,6 +6,7 @@ import {
 	type FormDefinition,
 	type FormElement,
 	type LegacyFormField,
+	type LogicRule,
 } from '@n8n/form-core';
 import { computed, reactive, ref, watch } from 'vue';
 
@@ -214,6 +215,8 @@ export function useFormBuilder(triggerNodeId: string) {
 		}
 		if (type === 'file') element.config = { multiple: true };
 		if (type === 'html') element.config = { html: '<p>Your content</p>' };
+		if (type === 'statement') element.config = { text: 'Add your text here' };
+		if (type === 'rating') element.config = { style: 'scale', max: 5 };
 		return element;
 	}
 
@@ -384,6 +387,43 @@ export function useFormBuilder(triggerNodeId: string) {
 		selectedElementId.value = null;
 	}
 
+	// --- per-element visibility rules (one rule per target, id `vis_<elementId>`) ---
+
+	function visibilityRuleId(elementId: string): string {
+		return `vis_${elementId}`;
+	}
+
+	function getVisibilityRule(elementId: string): LogicRule | undefined {
+		return selectedPage.value?.definition?.page.logic.find(
+			(rule) => rule.id === visibilityRuleId(elementId),
+		);
+	}
+
+	/** Replaces the element's visibility rule; null removes it */
+	function setVisibilityRule(elementId: string, rule: LogicRule | null) {
+		const definition = selectedPage.value?.definition;
+		if (!definition) return;
+		const logic = definition.page.logic;
+		const index = logic.findIndex((entry) => entry.id === visibilityRuleId(elementId));
+		if (index !== -1) logic.splice(index, 1);
+		if (rule !== null) logic.push({ ...rule, id: visibilityRuleId(elementId) });
+	}
+
+	/** Elements the selected element's conditions may reference */
+	function conditionSourceElements(targetElementId: string): FormElement[] {
+		const definition = selectedPage.value?.definition;
+		if (!definition) return [];
+		return definition.page.elements.filter((element) => {
+			if (element.id === targetElementId) return false;
+			const descriptor = getFieldType(element.type);
+			return (
+				descriptor !== undefined &&
+				descriptor.inputKind === 'value' &&
+				descriptor.valueType !== 'file'
+			);
+		});
+	}
+
 	// --- legacy upgrade (v2.x -> v3) ---
 
 	function replaceWithV3Params(node: INodeUi, definition: FormDefinition) {
@@ -460,6 +500,9 @@ export function useFormBuilder(triggerNodeId: string) {
 		insertElementBefore,
 		moveElementBefore,
 		updateElementLabel,
+		getVisibilityRule,
+		setVisibilityRule,
+		conditionSourceElements,
 		removeElement,
 		moveElement,
 		duplicateElement,

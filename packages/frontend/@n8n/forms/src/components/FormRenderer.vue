@@ -293,10 +293,13 @@ defineExpose({ runtime });
 				</ul>
 			</div>
 
+			<!-- Explicit duration: element removal runs on a timer, so a throttled
+				requestAnimationFrame (background tab) can't leave fields stuck mid-leave -->
 			<TransitionGroup
 				name="n8n-form-field-fade"
 				tag="div"
 				class="n8n-form-fields"
+				:duration="200"
 				@dragover="onFieldsDragOver"
 				@dragleave="onFieldsDragLeave"
 				@drop="onFieldsDrop"
@@ -690,7 +693,32 @@ defineExpose({ runtime });
 	font-size: 12px;
 	color: var(--n8n-form-color-text);
 	margin-top: 6px;
-	max-width: 232px;
+}
+
+.n8n-form-rating-scale {
+	flex-wrap: wrap;
+}
+
+.n8n-form-yesno {
+	display: flex;
+	gap: 8px;
+}
+
+.n8n-form-yesno-option {
+	min-width: 88px;
+}
+
+.n8n-form-statement {
+	font-size: 14px;
+	color: var(--n8n-form-color-text);
+}
+
+.n8n-form-statement p {
+	margin: 0 0 8px;
+}
+
+.n8n-form-statement p:last-child {
+	margin-bottom: 0;
 }
 
 .n8n-form-field-fade-enter-active,

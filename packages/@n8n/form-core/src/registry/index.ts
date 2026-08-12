@@ -1,5 +1,12 @@
 import { checkboxField, dropdownField, radioField } from './fields/choice-fields';
 import { dateField, numberField } from './fields/number-date-fields';
+import {
+	opinionScaleField,
+	phoneField,
+	statementField,
+	urlField,
+	yesNoField,
+} from './fields/phase3-fields';
 import { ratingField } from './fields/rating-field';
 import { fileField, hiddenField, htmlField } from './fields/special-fields';
 import { emailField, passwordField, textField, textareaField } from './fields/text-fields';
@@ -11,12 +18,17 @@ const descriptors: Array<FieldTypeDescriptor<never>> = [
 	emailField,
 	numberField,
 	ratingField,
+	opinionScaleField,
+	yesNoField,
+	phoneField,
+	urlField,
 	passwordField,
 	dateField,
 	dropdownField,
 	radioField,
 	checkboxField,
 	fileField,
+	statementField,
 	hiddenField,
 	htmlField,
 ] as Array<FieldTypeDescriptor<never>>;

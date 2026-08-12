@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import {
+	getOpinionScaleBounds,
 	getRatingBounds,
 	type FormChoiceOption,
 	type FormElement,
+	type OpinionScaleConfig,
 	type RatingConfig,
+	type YesNoConfig,
 } from '@n8n/form-core';
 import { computed, nextTick, ref } from 'vue';
 
@@ -79,10 +82,17 @@ function onHandleDragStart(event: DragEvent) {
 	emit('dragStart', event);
 }
 
-// --- rating ---
+// --- rating / opinion scale (shared control) ---
+const isScaleType = computed(() => ['rating', 'opinionScale'].includes(props.element.type));
 const ratingConfig = computed(() => props.element.config as RatingConfig | undefined);
-const ratingBounds = computed(() => getRatingBounds(ratingConfig.value));
-const ratingStyle = computed(() => ratingConfig.value?.style ?? 'scale');
+const ratingBounds = computed(() =>
+	props.element.type === 'opinionScale'
+		? getOpinionScaleBounds(props.element.config as OpinionScaleConfig | undefined)
+		: getRatingBounds(ratingConfig.value),
+);
+const ratingStyle = computed(() =>
+	props.element.type === 'opinionScale' ? 'scale' : (ratingConfig.value?.style ?? 'scale'),
+);
 const ratingSteps = computed(() => {
 	const { min, max } = ratingBounds.value;
 	return Array.from({ length: max - min + 1 }, (_, index) => min + index);
@@ -90,10 +100,35 @@ const ratingSteps = computed(() => {
 const ratingValue = computed(() =>
 	typeof props.value === 'string' ? Number(props.value) : (props.value as number | undefined),
 );
+const scaleEndLabels = computed(() => {
+	const config = props.element.config as { lowLabel?: string; highLabel?: string } | undefined;
+	return { low: config?.lowLabel, high: config?.highLabel };
+});
 
 function selectRating(step: number) {
 	emit('update', String(step));
 }
+
+// --- yes/no ---
+const yesNoConfig = computed(() => props.element.config as YesNoConfig | undefined);
+const yesNoValue = computed(() => {
+	if (props.value === 'true' || props.value === true) return true;
+	if (props.value === 'false' || props.value === false) return false;
+	return undefined;
+});
+
+function selectYesNo(answer: boolean) {
+	emit('update', String(answer));
+}
+
+// --- statement ---
+const statementParagraphs = computed(() => {
+	const text = (props.element.config as { text?: string } | undefined)?.text ?? '';
+	return text
+		.split(/\n+/)
+		.map((line) => line.trim())
+		.filter((line) => line !== '');
+});
 
 const inputId = computed(() => `n8n-form-el-${props.element.id}`);
 const descriptionId = computed(() => `${inputId.value}-description`);
@@ -120,12 +155,18 @@ const textInputType = computed(() => {
 			return 'email';
 		case 'password':
 			return 'password';
+		case 'phone':
+			return 'tel';
+		case 'url':
+			return 'url';
 		default:
 			return 'text';
 	}
 });
 
-const isTextLike = computed(() => ['text', 'email', 'password'].includes(props.element.type));
+const isTextLike = computed(() =>
+	['text', 'email', 'password', 'phone', 'url'].includes(props.element.type),
+);
 const isChoiceGroup = computed(() => ['radio', 'checkbox'].includes(props.element.type));
 
 const stringValue = computed(() => (typeof props.value === 'string' ? props.value : ''));
@@ -311,7 +352,7 @@ function onFiles(event: Event) {
 		/>
 
 		<div
-			v-else-if="element.type === 'rating'"
+			v-else-if="isScaleType"
 			:id="inputId"
 			class="n8n-form-rating"
 			role="radiogroup"
@@ -339,10 +380,44 @@ function onFiles(event: Event) {
 					<template v-else>{{ step }}</template>
 				</button>
 			</div>
-			<div v-if="ratingConfig?.lowLabel || ratingConfig?.highLabel" class="n8n-form-rating-labels">
-				<span>{{ ratingConfig?.lowLabel }}</span>
-				<span>{{ ratingConfig?.highLabel }}</span>
+			<div v-if="scaleEndLabels.low || scaleEndLabels.high" class="n8n-form-rating-labels">
+				<span>{{ scaleEndLabels.low }}</span>
+				<span>{{ scaleEndLabels.high }}</span>
 			</div>
+		</div>
+
+		<div
+			v-else-if="element.type === 'yesNo'"
+			:id="inputId"
+			class="n8n-form-yesno"
+			role="radiogroup"
+			:aria-describedby="describedBy"
+			:aria-invalid="error ? true : undefined"
+		>
+			<button
+				type="button"
+				role="radio"
+				:aria-checked="yesNoValue === true"
+				class="n8n-form-rating-step n8n-form-yesno-option"
+				:class="{ 'n8n-form-rating-step--active': yesNoValue === true }"
+				@click="selectYesNo(true)"
+			>
+				{{ yesNoConfig?.yesLabel || 'Yes' }}
+			</button>
+			<button
+				type="button"
+				role="radio"
+				:aria-checked="yesNoValue === false"
+				class="n8n-form-rating-step n8n-form-yesno-option"
+				:class="{ 'n8n-form-rating-step--active': yesNoValue === false }"
+				@click="selectYesNo(false)"
+			>
+				{{ yesNoConfig?.noLabel || 'No' }}
+			</button>
+		</div>
+
+		<div v-else-if="element.type === 'statement'" class="n8n-form-statement">
+			<p v-for="(paragraph, pIndex) in statementParagraphs" :key="pIndex">{{ paragraph }}</p>
 		</div>
 
 		<select
