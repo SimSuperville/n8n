@@ -20,10 +20,10 @@ const props = defineProps<{
 	builder: ReturnType<typeof useFormBuilder>;
 }>();
 
-const activeTab = ref<'field' | 'design'>('field');
+const activeTab = ref<'field' | 'settings'>('field');
 const tabs = [
 	{ value: 'field', label: 'Field' },
-	{ value: 'design', label: 'Design' },
+	{ value: 'settings', label: 'Settings' },
 ];
 
 const element = computed(() => props.builder.selectedElement.value);
@@ -86,7 +86,7 @@ const widthOptions = ['narrow', 'default', 'wide'] as const;
 					</N8nInputLabel>
 				</div>
 				<div :class="$style.row">
-					<N8nInputLabel label="Help text" size="small">
+					<N8nInputLabel label="Description" size="small">
 						<N8nInput v-model="element.description" size="small" />
 					</N8nInputLabel>
 				</div>
@@ -153,6 +153,49 @@ const widthOptions = ['narrow', 'default', 'wide'] as const;
 								size="small"
 								type="number"
 								@update:model-value="elementConfig.max = $event === '' ? undefined : Number($event)"
+							/>
+						</N8nInputLabel>
+					</div>
+				</template>
+
+				<template v-if="element.type === 'rating' && elementConfig">
+					<div :class="$style.row">
+						<N8nInputLabel label="Style" size="small">
+							<N8nSelect
+								:model-value="(elementConfig.style as string | undefined) ?? 'scale'"
+								size="small"
+								@update:model-value="elementConfig.style = $event"
+							>
+								<N8nOption value="scale" label="Number scale" />
+								<N8nOption value="stars" label="Stars" />
+							</N8nSelect>
+						</N8nInputLabel>
+					</div>
+					<div :class="$style.row">
+						<N8nInputLabel label="Steps" size="small">
+							<N8nInput
+								:model-value="(elementConfig.max as number | undefined)?.toString() ?? '5'"
+								size="small"
+								type="number"
+								@update:model-value="elementConfig.max = $event === '' ? undefined : Number($event)"
+							/>
+						</N8nInputLabel>
+					</div>
+					<div :class="$style.rowSplit">
+						<N8nInputLabel label="Low label" size="small">
+							<N8nInput
+								:model-value="(elementConfig.lowLabel as string | undefined) ?? ''"
+								size="small"
+								placeholder="Poor"
+								@update:model-value="elementConfig.lowLabel = $event"
+							/>
+						</N8nInputLabel>
+						<N8nInputLabel label="High label" size="small">
+							<N8nInput
+								:model-value="(elementConfig.highLabel as string | undefined) ?? ''"
+								size="small"
+								placeholder="Excellent"
+								@update:model-value="elementConfig.highLabel = $event"
 							/>
 						</N8nInputLabel>
 					</div>
@@ -228,7 +271,7 @@ const widthOptions = ['narrow', 'default', 'wide'] as const;
 			</template>
 		</template>
 
-		<template v-else-if="activeTab === 'design' && settings">
+		<template v-else-if="activeTab === 'settings' && settings">
 			<div :class="$style.row">
 				<N8nInputLabel label="Form title" size="small">
 					<N8nInput v-model="settings.title" size="small" />
@@ -252,6 +295,14 @@ const widthOptions = ['narrow', 'default', 'wide'] as const;
 				</N8nInputLabel>
 				<N8nInputLabel label="Background" size="small">
 					<input v-model="themeColors.background" :class="$style.colorInput" type="color" />
+				</N8nInputLabel>
+			</div>
+			<div v-if="themeColors" :class="$style.rowSplit">
+				<N8nInputLabel label="Card color" size="small">
+					<input v-model="themeColors.surface" :class="$style.colorInput" type="color" />
+				</N8nInputLabel>
+				<N8nInputLabel label="Text color" size="small">
+					<input v-model="themeColors.text" :class="$style.colorInput" type="color" />
 				</N8nInputLabel>
 			</div>
 			<div :class="$style.row">
@@ -286,9 +337,23 @@ const widthOptions = ['narrow', 'default', 'wide'] as const;
 					</N8nSelect>
 				</N8nInputLabel>
 			</div>
+			<div :class="$style.sectionTitle">Images</div>
 			<div :class="$style.row">
 				<N8nInputLabel label="Logo URL" size="small">
 					<N8nInput v-model="settings.theme.logoUrl" size="small" placeholder="https://…" />
+				</N8nInputLabel>
+			</div>
+			<div :class="$style.row">
+				<N8nInputLabel
+					label="Background image URL"
+					size="small"
+					tooltip-text="Shown behind the form card, covering the page"
+				>
+					<N8nInput
+						v-model="settings.theme.backgroundImageUrl"
+						size="small"
+						placeholder="https://…"
+					/>
 				</N8nInputLabel>
 			</div>
 		</template>

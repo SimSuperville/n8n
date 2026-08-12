@@ -27,6 +27,8 @@ export interface FormThemeFont {
 
 export interface FormTheme {
 	logoUrl?: string;
+	/** Page background image, rendered behind the form card */
+	backgroundImageUrl?: string;
 	colors?: FormThemeColors;
 	font?: FormThemeFont;
 	buttonStyle?: 'solid' | 'outline';

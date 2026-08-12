@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { listFieldTypes } from '@n8n/form-core';
-import { N8nFormRenderer } from '@n8n/forms';
+import { FORM_FIELD_TYPE_MIME, N8nFormRenderer } from '@n8n/forms';
 import { computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 
@@ -59,6 +59,26 @@ function pageLabel(index: number): string {
 	const title = page.definition?.page.title ?? page.definition?.title;
 	return title && title !== '' ? title : `Page ${index + 1}`;
 }
+
+function onPaletteDragStart(fieldType: string, event: DragEvent) {
+	event.dataTransfer?.setData(FORM_FIELD_TYPE_MIME, fieldType);
+	if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy';
+}
+
+function onUpdateTitle(title: string) {
+	const settings = builder.formSettings.value;
+	const page = builder.selectedPage.value?.definition;
+	// The preview shows the trigger's title on every page; page titles are per-page
+	if (page && page !== settings) page.title = title;
+	else if (settings) settings.title = title;
+}
+
+function onUpdateDescription(description: string) {
+	const page = builder.selectedPage.value?.definition;
+	const settings = builder.formSettings.value;
+	if (page && page !== settings) page.description = description;
+	else if (settings) settings.description = description;
+}
 </script>
 
 <template>
@@ -84,7 +104,18 @@ function pageLabel(index: number): string {
 		</div>
 
 		<div v-if="builder.loadError.value" :class="$style.error">
-			<N8nText color="danger">{{ builder.loadError.value }}</N8nText>
+			<N8nText :color="builder.canUpgrade.value ? 'text-base' : 'danger'">
+				{{ builder.loadError.value }}
+			</N8nText>
+			<N8nButton
+				v-if="builder.canUpgrade.value"
+				type="primary"
+				size="medium"
+				data-test-id="form-builder-upgrade"
+				@click="builder.upgradeToV3()"
+			>
+				Upgrade this form
+			</N8nButton>
 		</div>
 
 		<div v-else :class="$style.panes">
@@ -96,8 +127,10 @@ function pageLabel(index: number): string {
 						:key="descriptor.name"
 						:class="$style.paletteItem"
 						type="button"
+						draggable="true"
 						:data-test-id="`form-builder-add-${descriptor.name}`"
 						@click="builder.addElement(descriptor.name)"
+						@dragstart="onPaletteDragStart(descriptor.name, $event)"
 					>
 						{{ descriptor.label }}
 					</button>
@@ -157,6 +190,17 @@ function pageLabel(index: number): string {
 					:selected-element-id="builder.selectedElementId.value"
 					button-label="Submit"
 					@element-select="builder.selectedElementId.value = $event"
+					@element-move="
+						(id: string, before: string | null) => builder.moveElementBefore(id, before)
+					"
+					@element-insert="
+						(type: string, before: string | null) => builder.insertElementBefore(type, before)
+					"
+					@update-element-label="
+						(id: string, label: string) => builder.updateElementLabel(id, label)
+					"
+					@update-title="onUpdateTitle"
+					@update-description="onUpdateDescription"
 				/>
 			</main>
 
@@ -172,6 +216,7 @@ function pageLabel(index: number): string {
 	display: flex;
 	flex-direction: column;
 	height: 100%;
+	width: 100%;
 	background: var(--color--background--light-2);
 }
 
@@ -193,6 +238,11 @@ function pageLabel(index: number): string {
 
 .error {
 	padding: var(--spacing--lg);
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: var(--spacing--sm);
+	max-width: 480px;
 }
 
 .panes {

@@ -8,6 +8,7 @@ export {
 } from './definition/schema';
 export type * from './registry/types';
 export { getFieldType, listFieldTypes, registerFieldType } from './registry';
+export { getRatingBounds, type RatingConfig } from './registry/fields/rating-field';
 export {
 	evaluateCondition,
 	evaluateRule,

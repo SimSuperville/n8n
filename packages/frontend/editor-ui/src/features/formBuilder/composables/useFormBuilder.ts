@@ -1,9 +1,11 @@
 import {
+	fromLegacyFields,
 	getFieldType,
 	safeParseFormDefinition,
 	uid,
 	type FormDefinition,
 	type FormElement,
+	type LegacyFormField,
 } from '@n8n/form-core';
 import { computed, reactive, ref, watch } from 'vue';
 
@@ -39,6 +41,7 @@ export function useFormBuilder(triggerNodeId: string) {
 	const selectedElementId = ref<string | null>(null);
 	const saveState = ref<'saved' | 'dirty' | 'saving'>('saved');
 	const loadError = ref<string | null>(null);
+	const canUpgrade = ref(false);
 
 	const dirtyNodeIds = new Set<string>();
 	let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -92,10 +95,18 @@ export function useFormBuilder(triggerNodeId: string) {
 			return;
 		}
 		if (trigger.typeVersion < 3) {
-			loadError.value =
-				'This form uses an older Form Trigger version. Upgrade the node to version 3 to use the visual builder.';
+			const chain = collectChain(trigger);
+			const hasJsonPages = chain.some(
+				(node) =>
+					node.parameters?.operation !== 'completion' && node.parameters?.defineForm === 'json',
+			);
+			loadError.value = hasJsonPages
+				? 'This form has pages defined via JSON, which the visual builder cannot upgrade automatically. Convert those pages manually.'
+				: 'This form uses an older node version. Upgrade it to use the visual builder — the upgrade keeps your fields and output keys.';
+			canUpgrade.value = !hasJsonPages;
 			return;
 		}
+		canUpgrade.value = false;
 
 		suspendDirtyTracking = true;
 		pages.splice(0, pages.length);
@@ -207,11 +218,42 @@ export function useFormBuilder(triggerNodeId: string) {
 	}
 
 	function addElement(type: string) {
+		insertElementBefore(type, null);
+	}
+
+	/** Inserts a new element before the given element id; null appends at the end */
+	function insertElementBefore(type: string, beforeElementId: string | null) {
 		const definition = selectedPage.value?.definition;
 		if (!definition) return;
 		const element = newElement(type);
-		definition.page.elements.push(element);
+		const elements = definition.page.elements;
+		const index =
+			beforeElementId === null
+				? elements.length
+				: elements.findIndex((el) => el.id === beforeElementId);
+		elements.splice(index === -1 ? elements.length : index, 0, element);
 		selectedElementId.value = element.id;
+	}
+
+	/** Moves an element before the given element id; null moves it to the end */
+	function moveElementBefore(elementId: string, beforeElementId: string | null) {
+		const definition = selectedPage.value?.definition;
+		if (!definition || elementId === beforeElementId) return;
+		const elements = definition.page.elements;
+		const from = elements.findIndex((el) => el.id === elementId);
+		if (from === -1) return;
+		const [element] = elements.splice(from, 1);
+		const to =
+			beforeElementId === null
+				? elements.length
+				: elements.findIndex((el) => el.id === beforeElementId);
+		elements.splice(to === -1 ? elements.length : to, 0, element);
+	}
+
+	function updateElementLabel(elementId: string, label: string) {
+		const definition = selectedPage.value?.definition;
+		const element = definition?.page.elements.find((el) => el.id === elementId);
+		if (element) element.label = label;
 	}
 
 	function removeElement(elementId: string) {
@@ -342,6 +384,65 @@ export function useFormBuilder(triggerNodeId: string) {
 		selectedElementId.value = null;
 	}
 
+	// --- legacy upgrade (v2.x -> v3) ---
+
+	function replaceWithV3Params(node: INodeUi, definition: FormDefinition) {
+		const {
+			formFields: _fields,
+			formTitle: _title,
+			formDescription: _description,
+			defineForm: _defineForm,
+			jsonOutput: _jsonOutput,
+			...rest
+		} = node.parameters ?? {};
+		workflowDocumentStore.value.updateNodeById(node.id, { typeVersion: 3 });
+		workflowDocumentStore.value.setNodeParameters({
+			name: node.name,
+			value: { ...rest, formDefinition: serializeDefinition(definition) },
+		});
+	}
+
+	/** Converts a legacy (v2.x) trigger and its chained pages to v3 in one pass */
+	function upgradeToV3() {
+		const trigger = triggerNode.value;
+		if (!trigger || trigger.typeVersion >= 3 || !canUpgrade.value) return;
+
+		const chain = collectChain(trigger);
+		const options = (trigger.parameters?.options ?? {}) as { customCss?: string };
+		const triggerFields =
+			(trigger.parameters?.formFields as { values?: LegacyFormField[] } | undefined)?.values ?? [];
+		const triggerDefinition = fromLegacyFields(triggerFields, {
+			formTitle: (trigger.parameters?.formTitle as string) ?? '',
+			formDescription: (trigger.parameters?.formDescription as string) ?? '',
+			customCss: options.customCss,
+		});
+		replaceWithV3Params(trigger, triggerDefinition);
+
+		for (const node of chain) {
+			if (node.parameters?.operation === 'completion') {
+				workflowDocumentStore.value.updateNodeById(node.id, { typeVersion: 3 });
+				continue;
+			}
+			const pageOptions = (node.parameters?.options ?? {}) as {
+				formTitle?: string;
+				formDescription?: string;
+			};
+			const pageFields =
+				(node.parameters?.formFields as { values?: LegacyFormField[] } | undefined)?.values ?? [];
+			const pageDefinition = fromLegacyFields(pageFields, {
+				formTitle: pageOptions.formTitle ?? '',
+				formDescription: pageOptions.formDescription ?? '',
+			});
+			// Chained pages share the trigger's form id so the definition reads as one form
+			pageDefinition.id = triggerDefinition.id;
+			replaceWithV3Params(node, pageDefinition);
+		}
+
+		canUpgrade.value = false;
+		loadError.value = null;
+		load();
+	}
+
 	return {
 		pages,
 		triggerNode,
@@ -352,14 +453,19 @@ export function useFormBuilder(triggerNodeId: string) {
 		selectedElement,
 		saveState,
 		loadError,
+		canUpgrade,
 		load,
 		saveNow,
 		addElement,
+		insertElementBefore,
+		moveElementBefore,
+		updateElementLabel,
 		removeElement,
 		moveElement,
 		duplicateElement,
 		addPage,
 		removePage,
 		selectPage,
+		upgradeToV3,
 	};
 }

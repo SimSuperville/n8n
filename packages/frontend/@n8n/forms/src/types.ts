@@ -38,5 +38,7 @@ export interface ExecutionStatusResponse {
 }
 
 export const FORM_DEFINITION_SCRIPT_ID = 'n8n-form-payload';
+/** dataTransfer MIME the builder palette uses to drag a new field type into the preview */
+export const FORM_FIELD_TYPE_MIME = 'application/x-n8n-form-field-type';
 export const EXECUTION_STATUS_SUFFIX = 'n8n-execution-status';
 export const FORM_AUTH_HEADER = 'x-n8n-form-auth';

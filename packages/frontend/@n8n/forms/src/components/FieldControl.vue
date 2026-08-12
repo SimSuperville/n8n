@@ -1,6 +1,11 @@
 <script setup lang="ts">
-import type { FormChoiceOption, FormElement } from '@n8n/form-core';
-import { computed } from 'vue';
+import {
+	getRatingBounds,
+	type FormChoiceOption,
+	type FormElement,
+	type RatingConfig,
+} from '@n8n/form-core';
+import { computed, nextTick, ref } from 'vue';
 
 const props = defineProps<{
 	element: FormElement;
@@ -9,21 +14,85 @@ const props = defineProps<{
 	/** Builder preview: renders a selection affordance and emits select on click */
 	selectable?: boolean;
 	selected?: boolean;
+	/** Builder preview: renders a drop indicator when a drag hovers this field */
+	dropIndicator?: 'before' | 'after' | null;
 }>();
 
 const emit = defineEmits<{
 	update: [value: unknown];
 	select: [];
+	updateLabel: [label: string];
+	dragStart: [event: DragEvent];
 }>();
 
+/* eslint-disable @typescript-eslint/naming-convention -- CSS class names */
 const fieldClasses = computed(() => ({
 	'n8n-form-field': true,
-	'n8n-form-field--selectable': props.selectable === true,
-	'n8n-form-field--selected': props.selected === true,
+	'n8n-form-field--selectable': props.selectable,
+	'n8n-form-field--selected': props.selected,
+	'n8n-form-field--drop-before': props.dropIndicator === 'before',
+	'n8n-form-field--drop-after': props.dropIndicator === 'after',
 }));
+/* eslint-enable @typescript-eslint/naming-convention */
 
 function onFieldClick() {
 	if (props.selectable) emit('select');
+}
+
+// --- inline label editing (builder preview) ---
+const editingLabel = ref(false);
+const labelElement = ref<HTMLElement | null>(null);
+
+async function startLabelEdit() {
+	if (!props.selectable) return;
+	editingLabel.value = true;
+	await nextTick();
+	const el = labelElement.value;
+	if (el) {
+		el.focus();
+		const range = document.createRange();
+		range.selectNodeContents(el);
+		window.getSelection()?.removeAllRanges();
+		window.getSelection()?.addRange(range);
+	}
+}
+
+function commitLabelEdit() {
+	if (!editingLabel.value) return;
+	editingLabel.value = false;
+	const text = labelElement.value?.textContent?.trim() ?? '';
+	if (text !== '' && text !== props.element.label) emit('updateLabel', text);
+}
+
+function onLabelKeydown(event: KeyboardEvent) {
+	if (event.key === 'Enter') {
+		event.preventDefault();
+		(event.target as HTMLElement).blur();
+	}
+	if (event.key === 'Escape') {
+		editingLabel.value = false;
+		if (labelElement.value) labelElement.value.textContent = props.element.label;
+	}
+}
+
+function onHandleDragStart(event: DragEvent) {
+	emit('dragStart', event);
+}
+
+// --- rating ---
+const ratingConfig = computed(() => props.element.config as RatingConfig | undefined);
+const ratingBounds = computed(() => getRatingBounds(ratingConfig.value));
+const ratingStyle = computed(() => ratingConfig.value?.style ?? 'scale');
+const ratingSteps = computed(() => {
+	const { min, max } = ratingBounds.value;
+	return Array.from({ length: max - min + 1 }, (_, index) => min + index);
+});
+const ratingValue = computed(() =>
+	typeof props.value === 'string' ? Number(props.value) : (props.value as number | undefined),
+);
+
+function selectRating(step: number) {
+	emit('update', String(step));
 }
 
 const inputId = computed(() => `n8n-form-el-${props.element.id}`);
@@ -40,6 +109,10 @@ const describedBy = computed(() => {
 const config = computed(() => props.element.config ?? {});
 const options = computed(() => (config.value.options as FormChoiceOption[] | undefined) ?? []);
 const isMultiDropdown = computed(() => config.value.multiple === true);
+const numberMin = computed(() => config.value.min as number | undefined);
+const numberMax = computed(() => config.value.max as number | undefined);
+const numberStep = computed(() => config.value.step as number | undefined);
+const fileAccept = computed(() => config.value.acceptFileTypes as string | undefined);
 
 const textInputType = computed(() => {
 	switch (props.element.type) {
@@ -119,8 +192,24 @@ function onFiles(event: Event) {
 		:aria-invalid="error ? true : undefined"
 		@click="onFieldClick"
 	>
-		<legend class="n8n-form-label">
-			{{ element.label }}<span v-if="element.required" class="n8n-form-required">*</span>
+		<span
+			v-if="selectable"
+			class="n8n-form-drag-handle"
+			draggable="true"
+			title="Drag to reorder"
+			@dragstart="onHandleDragStart"
+			@click.stop
+			>⠿</span
+		>
+		<legend class="n8n-form-label" @dblclick.stop="startLabelEdit">
+			<span
+				ref="labelElement"
+				:contenteditable="editingLabel"
+				class="n8n-form-label-text"
+				@blur="commitLabelEdit"
+				@keydown="onLabelKeydown"
+				>{{ element.label }}</span
+			><span v-if="element.required" class="n8n-form-required">*</span>
 		</legend>
 		<p v-if="element.description" :id="descriptionId" class="n8n-form-description">
 			{{ element.description }}
@@ -149,8 +238,24 @@ function onFiles(event: Event) {
 	</fieldset>
 
 	<div v-else :class="fieldClasses" :data-element-id="element.id" @click="onFieldClick">
-		<label class="n8n-form-label" :for="inputId">
-			{{ element.label }}<span v-if="element.required" class="n8n-form-required">*</span>
+		<span
+			v-if="selectable"
+			class="n8n-form-drag-handle"
+			draggable="true"
+			title="Drag to reorder"
+			@dragstart="onHandleDragStart"
+			@click.stop
+			>⠿</span
+		>
+		<label class="n8n-form-label" :for="inputId" @dblclick.stop="startLabelEdit">
+			<span
+				ref="labelElement"
+				:contenteditable="editingLabel"
+				class="n8n-form-label-text"
+				@blur="commitLabelEdit"
+				@keydown="onLabelKeydown"
+				>{{ element.label }}</span
+			><span v-if="element.required" class="n8n-form-required">*</span>
 		</label>
 		<p v-if="element.description" :id="descriptionId" class="n8n-form-description">
 			{{ element.description }}
@@ -186,9 +291,9 @@ function onFiles(event: Event) {
 			class="n8n-form-input"
 			:value="stringValue"
 			:placeholder="element.placeholder"
-			:min="config.min as number | undefined"
-			:max="config.max as number | undefined"
-			:step="config.step as number | undefined"
+			:min="numberMin"
+			:max="numberMax"
+			:step="numberStep"
 			:aria-describedby="describedBy"
 			:aria-invalid="error ? true : undefined"
 			@input="onInput"
@@ -204,6 +309,41 @@ function onFiles(event: Event) {
 			:aria-invalid="error ? true : undefined"
 			@input="onInput"
 		/>
+
+		<div
+			v-else-if="element.type === 'rating'"
+			:id="inputId"
+			class="n8n-form-rating"
+			role="radiogroup"
+			:aria-describedby="describedBy"
+			:aria-invalid="error ? true : undefined"
+		>
+			<div :class="ratingStyle === 'stars' ? 'n8n-form-rating-stars' : 'n8n-form-rating-scale'">
+				<button
+					v-for="step in ratingSteps"
+					:key="step"
+					type="button"
+					role="radio"
+					:aria-checked="ratingValue === step"
+					:aria-label="`${step}`"
+					class="n8n-form-rating-step"
+					:class="{
+						'n8n-form-rating-step--active':
+							ratingStyle === 'stars'
+								? ratingValue !== undefined && step <= (ratingValue ?? 0)
+								: ratingValue === step,
+					}"
+					@click="selectRating(step)"
+				>
+					<template v-if="ratingStyle === 'stars'">★</template>
+					<template v-else>{{ step }}</template>
+				</button>
+			</div>
+			<div v-if="ratingConfig?.lowLabel || ratingConfig?.highLabel" class="n8n-form-rating-labels">
+				<span>{{ ratingConfig?.lowLabel }}</span>
+				<span>{{ ratingConfig?.highLabel }}</span>
+			</div>
+		</div>
 
 		<select
 			v-else-if="element.type === 'dropdown'"
@@ -233,7 +373,7 @@ function onFiles(event: Event) {
 			type="file"
 			class="n8n-form-file"
 			:multiple="config.multiple === true"
-			:accept="config.acceptFileTypes as string | undefined"
+			:accept="fileAccept"
 			:aria-describedby="describedBy"
 			:aria-invalid="error ? true : undefined"
 			@change="onFiles"

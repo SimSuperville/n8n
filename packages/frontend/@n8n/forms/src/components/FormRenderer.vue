@@ -5,6 +5,9 @@ import { computed, ref, toRef, nextTick } from 'vue';
 import FieldControl from './FieldControl.vue';
 import { useFormRuntime } from '../composables/useFormRuntime';
 
+const FIELD_TYPE_MIME = 'application/x-n8n-form-field-type';
+const ELEMENT_ID_MIME = 'application/x-n8n-form-element-id';
+
 const props = withDefaults(
 	defineProps<{
 		definition: FormDefinition;
@@ -29,6 +32,12 @@ const props = withDefaults(
 const emit = defineEmits<{
 	submit: [formData: FormData];
 	elementSelect: [elementId: string];
+	/** beforeElementId null = drop at the end */
+	elementMove: [elementId: string, beforeElementId: string | null];
+	elementInsert: [fieldType: string, beforeElementId: string | null];
+	updateTitle: [title: string];
+	updateDescription: [description: string];
+	updateElementLabel: [elementId: string, label: string];
 }>();
 
 const runtime = useFormRuntime({
@@ -89,6 +98,11 @@ const themeVars = computed(() => {
 	if (theme.colors?.error) vars['--n8n-form-color-error'] = theme.colors.error;
 	if (theme.font?.family) vars['--n8n-form-font-family'] = theme.font.family;
 	if (theme.font?.headingFamily) vars['--n8n-form-font-heading'] = theme.font.headingFamily;
+	if (theme.backgroundImageUrl) {
+		vars['background-image'] = `url(${JSON.stringify(theme.backgroundImageUrl)})`;
+		vars['background-size'] = 'cover';
+		vars['background-position'] = 'center';
+	}
 	return vars;
 });
 
@@ -101,6 +115,108 @@ const previewElements = computed(() =>
 			)
 		: runtime.visibleElements.value,
 );
+
+// --- drag and drop (builder preview) ---
+const dropIndex = ref<number | null>(null);
+
+function dropIndicatorFor(index: number): 'before' | 'after' | null {
+	if (dropIndex.value === null) return null;
+	if (dropIndex.value === index) return 'before';
+	if (
+		index === previewElements.value.length - 1 &&
+		dropIndex.value === previewElements.value.length
+	) {
+		return 'after';
+	}
+	return null;
+}
+
+function onFieldDragStart(elementId: string, event: DragEvent) {
+	event.dataTransfer?.setData(ELEMENT_ID_MIME, elementId);
+	if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+}
+
+function isFormDrag(event: DragEvent): boolean {
+	const types = event.dataTransfer?.types ?? [];
+	return types.includes(FIELD_TYPE_MIME) || types.includes(ELEMENT_ID_MIME);
+}
+
+function onFieldsDragOver(event: DragEvent) {
+	if (props.mode !== 'preview' || !isFormDrag(event)) return;
+	event.preventDefault();
+	if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+
+	const container = event.currentTarget as HTMLElement;
+	const fields = [...container.querySelectorAll<HTMLElement>('[data-element-id]')];
+	let index = fields.length;
+	for (let i = 0; i < fields.length; i++) {
+		const rect = fields[i].getBoundingClientRect();
+		if (event.clientY < rect.top + rect.height / 2) {
+			index = i;
+			break;
+		}
+	}
+	dropIndex.value = index;
+}
+
+function onFieldsDragLeave(event: DragEvent) {
+	const container = event.currentTarget as HTMLElement;
+	if (event.relatedTarget instanceof Node && container.contains(event.relatedTarget)) return;
+	dropIndex.value = null;
+}
+
+function onFieldsDrop(event: DragEvent) {
+	if (props.mode !== 'preview' || dropIndex.value === null) return;
+	event.preventDefault();
+	const beforeElementId = previewElements.value[dropIndex.value]?.id ?? null;
+	dropIndex.value = null;
+	const fieldType = event.dataTransfer?.getData(FIELD_TYPE_MIME);
+	const elementId = event.dataTransfer?.getData(ELEMENT_ID_MIME);
+	if (fieldType) {
+		emit('elementInsert', fieldType, beforeElementId);
+	} else if (elementId) {
+		emit('elementMove', elementId, beforeElementId);
+	}
+}
+
+// --- inline title/description editing (builder preview) ---
+const editingText = ref<'title' | 'description' | null>(null);
+const titleElement = ref<HTMLElement | null>(null);
+const descriptionElement = ref<HTMLElement | null>(null);
+
+async function startTextEdit(kind: 'title' | 'description') {
+	if (props.mode !== 'preview') return;
+	editingText.value = kind;
+	await nextTick();
+	const el = kind === 'title' ? titleElement.value : descriptionElement.value;
+	if (el) {
+		el.focus();
+		const range = document.createRange();
+		range.selectNodeContents(el);
+		window.getSelection()?.removeAllRanges();
+		window.getSelection()?.addRange(range);
+	}
+}
+
+function commitTextEdit() {
+	const kind = editingText.value;
+	if (kind === null) return;
+	editingText.value = null;
+	const el = kind === 'title' ? titleElement.value : descriptionElement.value;
+	const text = el?.textContent?.trim() ?? '';
+	if (kind === 'title' && text !== props.definition.title) emit('updateTitle', text);
+	if (kind === 'description' && text !== (props.definition.description ?? '')) {
+		emit('updateDescription', text);
+	}
+}
+
+function onTextEditKeydown(event: KeyboardEvent) {
+	if (event.key === 'Enter') {
+		event.preventDefault();
+		(event.target as HTMLElement).blur();
+	}
+	if (event.key === 'Escape') editingText.value = null;
+}
 
 async function onSubmit() {
 	if (props.submitting) return;
@@ -129,8 +245,34 @@ defineExpose({ runtime });
 				:src="definition.theme.logoUrl"
 				alt=""
 			/>
-			<h1 v-if="definition.title" class="n8n-form-title">{{ definition.title }}</h1>
-			<p v-if="definition.description" class="n8n-form-subtitle">{{ definition.description }}</p>
+			<h1
+				v-if="definition.title || mode === 'preview'"
+				class="n8n-form-title"
+				:class="{ 'n8n-form-text-editable': mode === 'preview' }"
+				@dblclick="startTextEdit('title')"
+			>
+				<span
+					ref="titleElement"
+					:contenteditable="editingText === 'title'"
+					@blur="commitTextEdit"
+					@keydown="onTextEditKeydown"
+					>{{ definition.title || (mode === 'preview' ? 'Untitled form' : '') }}</span
+				>
+			</h1>
+			<p
+				v-if="definition.description || mode === 'preview'"
+				class="n8n-form-subtitle"
+				:class="{ 'n8n-form-text-editable': mode === 'preview' }"
+				@dblclick="startTextEdit('description')"
+			>
+				<span
+					ref="descriptionElement"
+					:contenteditable="editingText === 'description'"
+					@blur="commitTextEdit"
+					@keydown="onTextEditKeydown"
+					>{{ definition.description || (mode === 'preview' ? 'Add a description' : '') }}</span
+				>
+			</p>
 
 			<div
 				v-if="errorEntries.length > 0"
@@ -151,17 +293,27 @@ defineExpose({ runtime });
 				</ul>
 			</div>
 
-			<TransitionGroup name="n8n-form-field-fade" tag="div" class="n8n-form-fields">
+			<TransitionGroup
+				name="n8n-form-field-fade"
+				tag="div"
+				class="n8n-form-fields"
+				@dragover="onFieldsDragOver"
+				@dragleave="onFieldsDragLeave"
+				@drop="onFieldsDrop"
+			>
 				<FieldControl
-					v-for="element in previewElements"
+					v-for="(element, index) in previewElements"
 					:key="element.id"
 					:element="element"
 					:value="runtime.values[element.id]"
 					:error="runtime.errors.value[element.id]"
 					:selectable="mode === 'preview'"
 					:selected="selectedElementId === element.id"
+					:drop-indicator="dropIndicatorFor(index)"
 					@update="runtime.setValue(element.id, $event)"
 					@select="emit('elementSelect', element.id)"
+					@update-label="emit('updateElementLabel', element.id, $event)"
+					@drag-start="onFieldDragStart(element.id, $event)"
 				/>
 			</TransitionGroup>
 
@@ -410,6 +562,7 @@ defineExpose({ runtime });
 	cursor: pointer;
 	border-radius: var(--n8n-form-radius);
 	outline-offset: 4px;
+	position: relative;
 }
 
 .n8n-form-field--selectable:hover {
@@ -419,6 +572,125 @@ defineExpose({ runtime });
 .n8n-form-field--selected,
 .n8n-form-field--selected:hover {
 	outline: 2px solid var(--n8n-form-color-primary);
+}
+
+.n8n-form-drag-handle {
+	position: absolute;
+	top: 0;
+	right: -2px;
+	font-size: 13px;
+	line-height: 1;
+	color: var(--n8n-form-color-border);
+	cursor: grab;
+	padding: 2px 4px;
+	opacity: 0;
+	transition: opacity 0.12s ease;
+	user-select: none;
+}
+
+.n8n-form-field--selectable:hover .n8n-form-drag-handle,
+.n8n-form-field--selected .n8n-form-drag-handle {
+	opacity: 1;
+	color: var(--n8n-form-color-primary);
+}
+
+.n8n-form-drag-handle:active {
+	cursor: grabbing;
+}
+
+.n8n-form-field--drop-before::before,
+.n8n-form-field--drop-after::after {
+	content: '';
+	position: absolute;
+	left: 0;
+	right: 0;
+	height: 3px;
+	border-radius: 2px;
+	background: var(--n8n-form-color-primary);
+}
+
+.n8n-form-field--drop-before::before {
+	top: -12px;
+}
+
+.n8n-form-field--drop-after::after {
+	bottom: -12px;
+}
+
+.n8n-form-text-editable {
+	cursor: text;
+}
+
+.n8n-form-text-editable span[contenteditable='true'],
+.n8n-form-label-text[contenteditable='true'] {
+	outline: 1px dashed var(--n8n-form-color-primary);
+	outline-offset: 2px;
+	border-radius: 2px;
+	min-width: 20px;
+	display: inline-block;
+}
+
+.n8n-form-rating-scale {
+	display: flex;
+	gap: 8px;
+}
+
+.n8n-form-rating-step {
+	font-family: inherit;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--n8n-form-color-heading);
+	background: var(--n8n-form-color-surface);
+	border: 1px solid var(--n8n-form-color-border);
+	border-radius: var(--n8n-form-radius);
+	min-width: 40px;
+	height: 40px;
+	cursor: pointer;
+	transition:
+		background 0.12s ease,
+		color 0.12s ease,
+		border-color 0.12s ease;
+}
+
+.n8n-form-rating-step:hover {
+	border-color: var(--n8n-form-color-primary);
+	color: var(--n8n-form-color-primary);
+}
+
+.n8n-form-rating-scale .n8n-form-rating-step--active {
+	background: var(--n8n-form-color-primary);
+	border-color: var(--n8n-form-color-primary);
+	color: #ffffff;
+}
+
+.n8n-form-rating-stars {
+	display: flex;
+	gap: 4px;
+}
+
+.n8n-form-rating-stars .n8n-form-rating-step {
+	border: 0;
+	background: transparent;
+	font-size: 28px;
+	line-height: 1;
+	min-width: 32px;
+	height: 36px;
+	color: var(--n8n-form-color-border);
+	padding: 0;
+}
+
+.n8n-form-rating-stars .n8n-form-rating-step--active,
+.n8n-form-rating-stars .n8n-form-rating-step:hover {
+	color: #efa027;
+}
+
+.n8n-form-rating-labels {
+	display: flex;
+	justify-content: space-between;
+	font-size: 12px;
+	color: var(--n8n-form-color-text);
+	margin-top: 6px;
+	max-width: 232px;
 }
 
 .n8n-form-field-fade-enter-active,

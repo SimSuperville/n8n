@@ -79,6 +79,7 @@ const formLayoutSchema = z.object({
 
 const formThemeSchema = z.object({
 	logoUrl: z.string().optional(),
+	backgroundImageUrl: z.string().optional(),
 	colors: z
 		.object({
 			primary: z.string().optional(),
