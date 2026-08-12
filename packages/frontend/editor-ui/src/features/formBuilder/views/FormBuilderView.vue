@@ -20,6 +20,8 @@ import BuilderInspector from '../components/BuilderInspector.vue';
 const props = defineProps<{
 	workflowId: string;
 	nodeId: string;
+	/** Rendered inside another surface (e.g. the AI assistant preview): no back navigation */
+	embedded?: boolean;
 }>();
 
 const router = useRouter();
@@ -103,7 +105,14 @@ function onUpdateDescription(description: string) {
 <template>
 	<div :class="$style.builder">
 		<div :class="$style.topBar">
-			<N8nButton type="tertiary" icon="arrow-left" size="small" text @click="goBack">
+			<N8nButton
+				v-if="!props.embedded"
+				type="tertiary"
+				icon="arrow-left"
+				size="small"
+				text
+				@click="goBack"
+			>
 				Back to workflow
 			</N8nButton>
 			<N8nText v-if="builder.formSettings.value" bold size="medium">
