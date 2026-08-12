@@ -7,6 +7,7 @@ import type { IExecutionResponse } from '@/features/execution/executions/executi
 import { injectStrict } from '@/app/utils/injectStrict';
 import { WorkflowDocumentStoreKey } from '@/app/constants/injectionKeys';
 import { FORM_TRIGGER_NODE_TYPE } from '@/app/constants/nodeTypes';
+import { useEditorContext } from '@/app/composables/useEditorContext';
 import { useWorkflowInitialization } from '@/app/composables/useWorkflowInitialization';
 import MainHeader from '@/app/components/MainHeader/MainHeader.vue';
 import NodeView from '@/app/views/NodeView.vue';
@@ -40,6 +41,7 @@ const emit = defineEmits<{
 // host's local refs, not the app-level globals.
 const currentWorkflowDocumentStore = injectStrict(WorkflowDocumentStoreKey);
 
+const { readOnly } = useEditorContext();
 const canvasStore = useCanvasStore();
 const nodeCreatorStore = useNodeCreatorStore();
 const workflowSaveStore = useWorkflowSaveStore();
@@ -137,6 +139,10 @@ const isReady = computed(() => !isLoading.value && !!currentWorkflowDocumentStor
  */
 const formBuilderNodeId = computed<string | null>(() => {
 	if (!props.preferFormBuilder) return null;
+	// The builder auto-persists on a debounce, so it must not be reachable while
+	// the host has locked the editor read-only (e.g. the agent is mid-rebuild) —
+	// fall back to the canvas, which already honors this flag, instead.
+	if (readOnly.value) return null;
 	const store = currentWorkflowDocumentStore.value;
 	if (!store) return null;
 	const trigger = store.allNodes.find(

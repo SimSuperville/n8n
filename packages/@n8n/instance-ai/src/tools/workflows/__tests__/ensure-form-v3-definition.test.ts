@@ -139,6 +139,33 @@ describe('ensureFormV3Definition', () => {
 		expect(json.nodes[0].parameters?.formDefinition).toBeUndefined();
 	});
 
+	it('leaves the node untouched when the converted definition would be invalid', () => {
+		const json = workflowWith([
+			{
+				id: 'trigger-1',
+				name: 'On form submission',
+				type: FORM_TRIGGER,
+				typeVersion: 2.6,
+				position: [0, 0],
+				parameters: {
+					formFields: {
+						values: [
+							{ fieldLabel: 'Rating', fieldType: 'text' },
+							{ fieldLabel: 'Rating', fieldType: 'number' },
+						],
+					},
+				},
+			},
+		]);
+
+		ensureFormV3Definition(json);
+
+		const node = json.nodes[0];
+		expect(node.typeVersion).toBe(2.6);
+		expect(node.parameters?.formDefinition).toBeUndefined();
+		expect(node.parameters?.formFields).toBeDefined();
+	});
+
 	it('gives chained page nodes the same form id as the trigger', () => {
 		const json = workflowWith([
 			{

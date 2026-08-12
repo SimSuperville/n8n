@@ -77,6 +77,11 @@ function computeDefinition(
 				})
 			: structuredClone(DEFAULT_DEFINITION);
 	if (formId !== undefined) definition.id = formId;
+	// The legacy converter can emit structurally invalid output (e.g. two fields
+	// sharing a label collide on their output key), and the caller deletes the
+	// legacy fields once we return a definition — so never hand back one that
+	// would not parse.
+	if (!safeParseFormDefinition(definition).success) return undefined;
 	return definition;
 }
 
@@ -92,8 +97,14 @@ export function ensureFormV3Definition(json: WorkflowJSON): void {
 			node.type === FORM_TRIGGER_NODE_TYPE || node.type === FORM_NODE_TYPE,
 	);
 
-	// The trigger's definition owns the form id; chained pages share it.
-	let formId: string | undefined;
+	// Single-form assumption: the first Form Trigger's id is shared by every form
+	// node in the workflow. This pass is array-ordered and has no notion of
+	// connection topology, so a workflow with two independent forms would
+	// collapse their ids. Pre-seed from the trigger (rather than the first node
+	// reached in the loop) so a page node listed before its trigger in
+	// `json.nodes` still gets the trigger's id, not one of its own.
+	const trigger = formNodes.find((node) => node.type === FORM_TRIGGER_NODE_TYPE);
+	const formId = trigger ? computeDefinition(trigger.parameters ?? {}, undefined)?.id : undefined;
 
 	for (const node of formNodes) {
 		const parameters = node.parameters ?? {};
@@ -105,8 +116,6 @@ export function ensureFormV3Definition(json: WorkflowJSON): void {
 
 		const definition = computeDefinition(parameters, formId);
 		if (definition === undefined) continue; // expression-valued: leave node as-is
-
-		if (node.type === FORM_TRIGGER_NODE_TYPE && formId === undefined) formId = definition.id;
 
 		// A definition that was already a valid string stays byte-for-byte verbatim
 		// (never clobber user-set theme/layout or reformat their JSON).
