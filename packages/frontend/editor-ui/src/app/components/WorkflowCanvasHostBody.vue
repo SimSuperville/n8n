@@ -1,6 +1,6 @@
 <script lang="ts" setup>
-import { computed, onBeforeUnmount, onMounted, watch } from 'vue';
-import { N8nIcon } from '@n8n/design-system';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { N8nButton, N8nIcon } from '@n8n/design-system';
 import { safeParseFormDefinition } from '@n8n/form-core';
 import type { IWorkflowDb } from '@/Interface';
 import type { IExecutionResponse } from '@/features/execution/executions/executions.types';
@@ -137,7 +137,7 @@ const isReady = computed(() => !isLoading.value && !!currentWorkflowDocumentStor
  * opted in, the store is loaded, and the node carries a static, parseable v3
  * formDefinition (expressions / runtime-generated forms fall back to the canvas).
  */
-const formBuilderNodeId = computed<string | null>(() => {
+const formTriggerNodeId = computed<string | null>(() => {
 	if (!props.preferFormBuilder) return null;
 	// The builder auto-persists on a debounce, so it must not be reachable while
 	// the host has locked the editor read-only (e.g. the agent is mid-rebuild) —
@@ -152,6 +152,13 @@ const formBuilderNodeId = computed<string | null>(() => {
 	const parsed = safeParseFormDefinition(trigger.parameters?.formDefinition ?? {});
 	return parsed.success ? trigger.id : null;
 });
+
+/** Lets the user swap the embedded builder for the canvas to reach the rest of the workflow */
+const canvasRequested = ref(false);
+
+const formBuilderNodeId = computed<string | null>(() =>
+	canvasRequested.value ? null : formTriggerNodeId.value,
+);
 </script>
 
 <template>
@@ -164,8 +171,22 @@ const formBuilderNodeId = computed<string | null>(() => {
 					:workflow-id="workflowId"
 					:node-id="formBuilderNodeId"
 					embedded
+					@show-canvas="canvasRequested = true"
 				/>
-				<NodeView v-else />
+				<template v-else>
+					<NodeView />
+					<N8nButton
+						v-if="canvasRequested && formTriggerNodeId"
+						:class="$style.backToForm"
+						type="secondary"
+						icon="pencil"
+						size="small"
+						data-test-id="host-back-to-form-builder"
+						@click="canvasRequested = false"
+					>
+						Edit form
+					</N8nButton>
+				</template>
 			</div>
 			<LogsPanel :class="$style.logs" />
 		</template>
@@ -193,6 +214,14 @@ const formBuilderNodeId = computed<string | null>(() => {
 	flex: 1;
 	min-height: 0;
 	display: flex;
+}
+
+/* Floats over the canvas so the user can get back to the form they were editing */
+.backToForm {
+	position: absolute;
+	right: var(--spacing--sm);
+	bottom: var(--spacing--sm);
+	z-index: 1;
 }
 
 .logs {

@@ -24,6 +24,11 @@ const props = defineProps<{
 	embedded?: boolean;
 }>();
 
+const emit = defineEmits<{
+	/** Embedded only: the host should swap this builder out for the workflow canvas */
+	'show-canvas': [];
+}>();
+
 const router = useRouter();
 const builder = useFormBuilder(props.nodeId);
 
@@ -114,6 +119,19 @@ function onUpdateDescription(description: string) {
 				@click="goBack"
 			>
 				Back to workflow
+			</N8nButton>
+			<!-- Embedded, the builder replaces the host's canvas; this hands it back
+				 so the rest of the workflow (storage nodes, credentials) stays reachable -->
+			<N8nButton
+				v-else
+				type="tertiary"
+				icon="workflow"
+				size="small"
+				text
+				data-test-id="form-builder-show-canvas"
+				@click="emit('show-canvas')"
+			>
+				Show workflow
 			</N8nButton>
 			<N8nText v-if="builder.formSettings.value" bold size="medium">
 				{{ builder.formSettings.value.title || 'Untitled form' }}
