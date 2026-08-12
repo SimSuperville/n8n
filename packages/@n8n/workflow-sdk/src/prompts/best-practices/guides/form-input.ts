@@ -123,7 +123,7 @@ the subject matter rather than always emitting the same ones.
 - \`layout.mode\`: \`"classic"\` shows all fields at once; \`"oneAtATime"\` shows one per screen and suits surveys and longer forms.
 - \`layout.containerWidth\`: \`"narrow" | "default" | "wide"\`; \`layout.density\`: \`"compact" | "default" | "relaxed"\`.
 - \`theme.colors\`: \`primary\`, \`background\`, \`surface\`, \`text\`, \`error\` (hex). Setting \`primary\` alone already lifts the form.
-- \`theme.radius\`: \`"none" | "sm" | "md" | "lg" | "pill"\`; \`theme.buttonStyle\`: \`"solid" | "outline"\`; \`theme.colorScheme\`: \`"light" | "dark" | "auto"\`.
+- \`theme.radius\`: a corner radius in px (0–64), or one of the presets \`"none" | "sm" | "md" | "lg" | "pill"\`; \`theme.buttonStyle\`: \`"solid" | "outline"\`; \`theme.colorScheme\`: \`"light" | "dark" | "auto"\`.
 - \`theme.font\` / \`theme.font.headingFamily\` for typography, \`theme.logoUrl\` when the user supplies one.
 
 Give the form a real \`title\` and a short \`description\` — not the field list restated.
@@ -142,6 +142,13 @@ Operators: \`eq\`, \`neq\`, \`contains\`, \`notContains\`, \`gt\`, \`gte\`, \`lt
 Prefer this over splitting a form across pages with IF nodes when the branching is only about field visibility.
 
 Every \`elementId\` / \`targetElementId\` must match an element \`id\` on that page.
+
+### Fields you must not author
+
+\`formDefinition.storage\` is builder-owned metadata linking the form to a data table for its
+responses view — its \`columnMap\` is derived from the live data table's columns. Never emit it.
+Storing responses is still the storage node's job: wire a Data Table (or Sheets/Airtable/DB) node
+after the form as described above.
 
 ## Recommended Nodes
 
