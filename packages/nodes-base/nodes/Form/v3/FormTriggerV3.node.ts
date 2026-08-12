@@ -17,6 +17,7 @@ import {
 	webhookPath,
 } from '../common.descriptions';
 import { FORM_TRIGGER_AUTHENTICATION_PROPERTY } from '../interfaces';
+import { editFormJsonOption } from './edit-form-json-option';
 import { formWebhookV3 } from './form-webhook-v3';
 import { formDefinitionProperty } from './form-definition-property';
 
@@ -129,6 +130,7 @@ const descriptionV3: INodeTypeDescription = {
 			default: {},
 			options: [
 				appendAttributionToForm,
+				editFormJsonOption,
 				ipAllowlist,
 				{
 					displayName: 'Button Label',

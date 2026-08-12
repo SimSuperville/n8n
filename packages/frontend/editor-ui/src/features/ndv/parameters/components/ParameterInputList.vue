@@ -799,6 +799,16 @@ watch(
 				@value-changed="valueChanged"
 			/>
 
+			<FormDefinitionParameter
+				v-else-if="item.parameter.name === 'formBuilderShortcut'"
+				:path="item.path"
+				value=""
+				:node="node"
+				:is-read-only="isReadOnly"
+				shortcut-only
+				@value-changed="valueChanged"
+			/>
+
 			<N8nSectionHeader
 				v-else-if="item.parameter.type === 'notice' && item.parameter.typeOptions?.sectionHeader"
 				class="parameter-item"

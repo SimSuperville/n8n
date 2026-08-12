@@ -1,21 +1,27 @@
 <script setup lang="ts">
 import { uid, type FormChoiceOption } from '@n8n/form-core';
-import { computed, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
+import { useRouter } from 'vue-router';
 
+import { useTelemetry } from '@n8n/composables/useTelemetry';
 import { useToast } from '@n8n/composables/useToast';
 
 import {
 	N8nButton,
+	N8nCollapsiblePanel,
+	N8nIcon,
 	N8nIconButton,
 	N8nInput,
 	N8nInputLabel,
 	N8nOption,
+	N8nRadioButtons,
 	N8nSelect,
 	N8nSwitch,
 	N8nTabs,
 	N8nText,
 } from '@n8n/design-system';
 
+import { DATA_TABLE_DETAILS } from '@/features/core/dataTable/constants';
 import type { useFormBuilder } from '../composables/useFormBuilder';
 import LogicSection from './LogicSection.vue';
 
@@ -81,9 +87,124 @@ const layoutCover = computed(() => {
 	return layout.cover;
 });
 
-const radiusOptions = ['none', 'sm', 'md', 'lg', 'pill'] as const;
-const widthOptions = ['narrow', 'default', 'wide'] as const;
-const densityOptions = ['compact', 'default', 'relaxed'] as const;
+const openSections = reactive({
+	layout: true,
+	theme: true,
+	responses: true,
+	typography: false,
+	images: false,
+});
+
+// --- layout mode (moved here from the top bar) ---
+const telemetry = useTelemetry();
+const toast = useToast();
+
+const layoutModeOptions = [
+	{ label: 'Classic', value: 'classic' },
+	{ label: 'One at a time', value: 'oneAtATime' },
+];
+
+const layoutMode = computed(() => settings.value?.layout.mode ?? 'classic');
+
+function setLayoutMode(mode: string) {
+	if (!settings.value) return;
+	settings.value.layout.mode = mode as 'classic' | 'oneAtATime';
+	telemetry.track('User changed form layout mode', { mode });
+}
+
+// --- corner radius (px slider; legacy documents may carry a named preset) ---
+const RADIUS_PRESETS: Record<string, number> = { none: 0, sm: 4, md: 8, lg: 12, pill: 16 };
+
+const radiusPx = computed(() => {
+	const radius = settings.value?.theme.radius;
+	if (typeof radius === 'number') return radius;
+	return RADIUS_PRESETS[radius ?? 'md'] ?? 8;
+});
+
+function setRadius(event: Event) {
+	if (!settings.value) return;
+	settings.value.theme.radius = Number((event.target as HTMLInputElement).value);
+}
+
+// --- WCAG AA contrast checks on the selected colors ---
+function relativeLuminance(hex: string): number | null {
+	const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+	if (!match) return null;
+	const [r, g, b] = [0, 2, 4]
+		.map((offset) => parseInt(match[1].slice(offset, offset + 2), 16) / 255)
+		.map((channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4));
+	return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrastRatio(colorA: string, colorB: string): number | null {
+	const luminanceA = relativeLuminance(colorA);
+	const luminanceB = relativeLuminance(colorB);
+	if (luminanceA === null || luminanceB === null) return null;
+	const [lighter, darker] =
+		luminanceA > luminanceB ? [luminanceA, luminanceB] : [luminanceB, luminanceA];
+	return (lighter + 0.05) / (darker + 0.05);
+}
+
+const contrastWarnings = computed<string[]>(() => {
+	const colors = settings.value?.theme.colors ?? {};
+	const warnings: string[] = [];
+	const textOnCard = contrastRatio(colors.text ?? '#555555', colors.surface ?? '#ffffff');
+	if (textOnCard !== null && textOnCard < 4.5) {
+		warnings.push(
+			`Text on the card is ${textOnCard.toFixed(1)}:1 — below the 4.5:1 AA minimum for text`,
+		);
+	}
+	const buttonText = contrastRatio('#ffffff', colors.primary ?? '#ff6d5a');
+	if (buttonText !== null && buttonText < 3) {
+		warnings.push(
+			`White button text on the primary color is ${buttonText.toFixed(1)}:1 — below the 3:1 AA minimum for controls`,
+		);
+	}
+	return warnings;
+});
+
+// --- image upload (stored as a data URI inside the definition) ---
+const MAX_IMAGE_BYTES = 300 * 1024;
+const imageFileInput = ref<HTMLInputElement | null>(null);
+let pendingImageAssign: ((dataUri: string) => void) | null = null;
+
+function pickImage(assign: (dataUri: string) => void) {
+	pendingImageAssign = assign;
+	imageFileInput.value?.click();
+}
+
+function onImagePicked(event: Event) {
+	const input = event.target as HTMLInputElement;
+	const file = input.files?.[0];
+	input.value = '';
+	const assign = pendingImageAssign;
+	pendingImageAssign = null;
+	if (!file || !assign) return;
+	if (file.size > MAX_IMAGE_BYTES) {
+		toast.showError(
+			new Error('The image is stored inside the workflow, so it must be under 300 KB'),
+			'Image too large',
+		);
+		return;
+	}
+	const reader = new FileReader();
+	reader.onload = () => {
+		if (typeof reader.result === 'string') assign(reader.result);
+	};
+	reader.readAsDataURL(file);
+}
+
+function assignLogo(dataUri: string) {
+	if (settings.value) settings.value.theme.logoUrl = dataUri;
+}
+
+function assignBackground(dataUri: string) {
+	if (settings.value) settings.value.theme.backgroundImageUrl = dataUri;
+}
+
+function assignCover(dataUri: string) {
+	if (layoutCover.value) layoutCover.value.imageUrl = dataUri;
+}
 
 // System font stacks only: the public form runs under a sandbox CSP that
 // blocks external font hosts, so every option must resolve locally.
@@ -108,8 +229,15 @@ const coverPlacementOptions = [
 ];
 
 // --- data table responses ---
-const toast = useToast();
+const router = useRouter();
 const dataTableBusy = ref(false);
+
+const dataTableHref = computed(() => {
+	const info = props.builder.dataTableInfo.value;
+	const projectId = props.builder.dataTableProjectId.value;
+	if (!info || projectId === undefined) return null;
+	return router.resolve({ name: DATA_TABLE_DETAILS, params: { projectId, id: info.id } }).href;
+});
 
 async function onConnectDataTable() {
 	dataTableBusy.value = true;
@@ -419,217 +547,264 @@ async function onSyncDataTable() {
 				</N8nInputLabel>
 			</div>
 
-			<div :class="$style.sectionTitle">Theme</div>
-			<div v-if="themeColors" :class="$style.rowSplit">
-				<N8nInputLabel label="Primary color" size="small">
-					<input v-model="themeColors.primary" :class="$style.colorInput" type="color" />
-				</N8nInputLabel>
-				<N8nInputLabel label="Background" size="small">
-					<input v-model="themeColors.background" :class="$style.colorInput" type="color" />
-				</N8nInputLabel>
-			</div>
-			<div v-if="themeColors" :class="$style.rowSplit">
-				<N8nInputLabel label="Card color" size="small">
-					<input v-model="themeColors.surface" :class="$style.colorInput" type="color" />
-				</N8nInputLabel>
-				<N8nInputLabel label="Text color" size="small">
-					<input v-model="themeColors.text" :class="$style.colorInput" type="color" />
-				</N8nInputLabel>
-			</div>
-			<div :class="$style.row">
-				<N8nInputLabel label="Corner radius" size="small">
-					<N8nSelect
-						:model-value="settings.theme.radius ?? 'md'"
+			<N8nCollapsiblePanel v-model="openSections.layout" title="Layout">
+				<div :class="$style.sectionBody">
+					<N8nRadioButtons
 						size="small"
-						@update:model-value="settings.theme.radius = $event"
-					>
-						<N8nOption
-							v-for="option in radiusOptions"
-							:key="option"
-							:value="option"
-							:label="option"
-						/>
-					</N8nSelect>
-				</N8nInputLabel>
-			</div>
-			<div :class="$style.row">
-				<N8nInputLabel label="Button style" size="small">
-					<N8nSelect
-						:model-value="settings.theme.buttonStyle ?? 'solid'"
-						size="small"
-						@update:model-value="settings.theme.buttonStyle = $event"
-					>
-						<N8nOption value="solid" label="Solid" />
-						<N8nOption value="outline" label="Outline" />
-					</N8nSelect>
-				</N8nInputLabel>
-			</div>
-
-			<div :class="$style.sectionTitle">Responses</div>
-			<template v-if="builder.dataTableState.value === 'none'">
-				<N8nText size="xsmall" color="text-light">
-					Store every submission as a row in an n8n Data Table — one column per field.
-				</N8nText>
-				<N8nButton
-					type="secondary"
-					size="small"
-					icon="table"
-					:loading="dataTableBusy"
-					data-test-id="form-builder-connect-data-table"
-					@click="onConnectDataTable"
-				>
-					Save responses to a Data Table
-				</N8nButton>
-			</template>
-			<template v-else-if="builder.dataTableState.value === 'nodeMissing'">
-				<N8nText size="xsmall" color="danger">
-					The linked Data table node was removed from the canvas. Delete the storage link in the
-					form JSON, or undo the node deletion.
-				</N8nText>
-			</template>
-			<template v-else>
-				<N8nText size="xsmall" color="text-light">
-					Responses are saved via the linked Data table node on the canvas.
-				</N8nText>
-				<N8nText v-if="builder.dataTableState.value === 'synced'" size="xsmall" color="success">
-					✓ Columns match the form fields
-				</N8nText>
-				<template v-else>
-					<N8nText size="xsmall" color="warning">
-						Fields changed since the table was connected.
-					</N8nText>
-					<N8nButton
-						type="secondary"
-						size="small"
-						:loading="dataTableBusy"
-						data-test-id="form-builder-sync-data-table"
-						@click="onSyncDataTable"
-					>
-						Sync columns
-					</N8nButton>
-				</template>
-			</template>
-
-			<div :class="$style.sectionTitle">Typography</div>
-			<div v-if="themeFont" :class="$style.row">
-				<N8nInputLabel label="Font" size="small">
-					<N8nSelect
-						:model-value="themeFont.family ?? ''"
-						size="small"
-						@update:model-value="themeFont.family = $event === '' ? undefined : $event"
-					>
-						<N8nOption
-							v-for="option in fontOptions"
-							:key="option.label"
-							:value="option.value"
-							:label="option.label"
-						/>
-					</N8nSelect>
-				</N8nInputLabel>
-			</div>
-			<div v-if="themeFont" :class="$style.row">
-				<N8nInputLabel
-					label="Heading font"
-					size="small"
-					tooltip-text="Used for the form title and question labels. Defaults to the body font."
-				>
-					<N8nSelect
-						:model-value="themeFont.headingFamily ?? ''"
-						size="small"
-						@update:model-value="themeFont.headingFamily = $event === '' ? undefined : $event"
-					>
-						<N8nOption
-							v-for="option in fontOptions"
-							:key="option.label"
-							:value="option.value"
-							:label="option.label"
-						/>
-					</N8nSelect>
-				</N8nInputLabel>
-			</div>
-
-			<div :class="$style.sectionTitle">Layout</div>
-			<div :class="$style.row">
-				<N8nInputLabel label="Container width" size="small">
-					<N8nSelect
-						:model-value="settings.layout.containerWidth ?? 'default'"
-						size="small"
-						@update:model-value="settings.layout.containerWidth = $event"
-					>
-						<N8nOption
-							v-for="option in widthOptions"
-							:key="option"
-							:value="option"
-							:label="option"
-						/>
-					</N8nSelect>
-				</N8nInputLabel>
-			</div>
-			<div :class="$style.row">
-				<N8nInputLabel
-					label="Density"
-					size="small"
-					tooltip-text="Spacing between fields and around the form card"
-				>
-					<N8nSelect
-						:model-value="settings.layout.density ?? 'default'"
-						size="small"
-						@update:model-value="settings.layout.density = $event"
-					>
-						<N8nOption
-							v-for="option in densityOptions"
-							:key="option"
-							:value="option"
-							:label="option"
-						/>
-					</N8nSelect>
-				</N8nInputLabel>
-			</div>
-
-			<div :class="$style.sectionTitle">Images</div>
-			<div :class="$style.row">
-				<N8nInputLabel label="Logo URL" size="small">
-					<N8nInput v-model="settings.theme.logoUrl" size="small" placeholder="https://…" />
-				</N8nInputLabel>
-			</div>
-			<div :class="$style.row">
-				<N8nInputLabel
-					label="Background image URL"
-					size="small"
-					tooltip-text="Shown behind the form card, covering the page"
-				>
-					<N8nInput
-						v-model="settings.theme.backgroundImageUrl"
-						size="small"
-						placeholder="https://…"
+						:model-value="layoutMode"
+						:options="layoutModeOptions"
+						data-test-id="form-builder-layout-mode"
+						@update:model-value="setLayoutMode"
 					/>
-				</N8nInputLabel>
-			</div>
-			<div v-if="layoutCover" :class="$style.row">
-				<N8nInputLabel
-					label="Cover image URL"
-					size="small"
-					tooltip-text="A featured image shown as a banner above the form or beside it"
-				>
-					<N8nInput v-model="layoutCover.imageUrl" size="small" placeholder="https://…" />
-				</N8nInputLabel>
-			</div>
-			<div v-if="layoutCover && layoutCover.imageUrl" :class="$style.row">
-				<N8nInputLabel label="Cover placement" size="small">
-					<N8nSelect
-						:model-value="layoutCover.split ?? 'none'"
-						size="small"
-						@update:model-value="layoutCover.split = $event"
+				</div>
+			</N8nCollapsiblePanel>
+
+			<N8nCollapsiblePanel v-model="openSections.theme" title="Theme">
+				<div :class="$style.sectionBody">
+					<div v-if="themeColors" :class="$style.rowSplit">
+						<N8nInputLabel label="Primary color" size="small">
+							<input v-model="themeColors.primary" :class="$style.colorInput" type="color" />
+						</N8nInputLabel>
+						<N8nInputLabel label="Background" size="small">
+							<input v-model="themeColors.background" :class="$style.colorInput" type="color" />
+						</N8nInputLabel>
+					</div>
+					<div v-if="themeColors" :class="$style.rowSplit">
+						<N8nInputLabel label="Card color" size="small">
+							<input v-model="themeColors.surface" :class="$style.colorInput" type="color" />
+						</N8nInputLabel>
+						<N8nInputLabel label="Text color" size="small">
+							<input v-model="themeColors.text" :class="$style.colorInput" type="color" />
+						</N8nInputLabel>
+					</div>
+					<div
+						v-for="warning in contrastWarnings"
+						:key="warning"
+						:class="$style.contrastWarning"
+						data-test-id="form-builder-contrast-warning"
 					>
-						<N8nOption
-							v-for="option in coverPlacementOptions"
-							:key="option.value"
-							:value="option.value"
-							:label="option.label"
-						/>
-					</N8nSelect>
-				</N8nInputLabel>
-			</div>
+						<N8nIcon icon="triangle-alert" size="small" />
+						<N8nText size="xsmall" color="warning">{{ warning }}</N8nText>
+					</div>
+					<div :class="$style.row">
+						<N8nInputLabel label="Corner radius" size="small">
+							<div :class="$style.sliderRow">
+								<input
+									:class="$style.slider"
+									type="range"
+									min="0"
+									max="24"
+									step="1"
+									:value="radiusPx"
+									data-test-id="form-builder-radius-slider"
+									@input="setRadius"
+								/>
+								<N8nText size="xsmall" color="text-light">{{ radiusPx }}px</N8nText>
+							</div>
+						</N8nInputLabel>
+					</div>
+					<div :class="$style.row">
+						<N8nInputLabel label="Button style" size="small">
+							<N8nSelect
+								:model-value="settings.theme.buttonStyle ?? 'solid'"
+								size="small"
+								@update:model-value="settings.theme.buttonStyle = $event"
+							>
+								<N8nOption value="solid" label="Solid" />
+								<N8nOption value="outline" label="Outline" />
+							</N8nSelect>
+						</N8nInputLabel>
+					</div>
+				</div>
+			</N8nCollapsiblePanel>
+
+			<N8nCollapsiblePanel v-model="openSections.responses" title="Responses">
+				<div :class="$style.sectionBody">
+					<template v-if="builder.dataTableState.value === 'none'">
+						<N8nText size="xsmall" color="text-light">
+							Store every submission as a row in an n8n Data Table — one column per field.
+						</N8nText>
+						<N8nButton
+							type="secondary"
+							size="small"
+							icon="table"
+							:loading="dataTableBusy"
+							data-test-id="form-builder-connect-data-table"
+							@click="onConnectDataTable"
+						>
+							Save responses to a Data Table
+						</N8nButton>
+					</template>
+					<template v-else-if="builder.dataTableState.value === 'nodeMissing'">
+						<N8nText size="xsmall" color="danger">
+							The linked Data table node was removed from the canvas. Delete the storage link in the
+							form JSON, or undo the node deletion.
+						</N8nText>
+					</template>
+					<template v-else>
+						<div :class="$style.dataTableCard" data-test-id="form-builder-data-table-card">
+							<N8nIcon icon="table" :class="$style.dataTableIcon" />
+							<div :class="$style.dataTableMeta">
+								<N8nText size="small" bold>{{ builder.dataTableInfo.value?.name }}</N8nText>
+								<N8nText
+									v-if="builder.dataTableState.value === 'synced'"
+									size="xsmall"
+									color="success"
+								>
+									Connected — columns match the form fields
+								</N8nText>
+								<N8nText v-else size="xsmall" color="warning">
+									Connected — fields changed since the table was linked
+								</N8nText>
+							</div>
+							<a
+								v-if="dataTableHref"
+								:href="dataTableHref"
+								target="_blank"
+								rel="noopener noreferrer"
+								title="Open data table in a new tab"
+								data-test-id="form-builder-open-data-table"
+							>
+								<N8nIconButton icon="external-link" type="tertiary" size="small" text />
+							</a>
+						</div>
+						<N8nButton
+							v-if="builder.dataTableState.value === 'outOfSync'"
+							type="secondary"
+							size="small"
+							:loading="dataTableBusy"
+							data-test-id="form-builder-sync-data-table"
+							@click="onSyncDataTable"
+						>
+							Sync columns
+						</N8nButton>
+					</template>
+				</div>
+			</N8nCollapsiblePanel>
+
+			<N8nCollapsiblePanel v-model="openSections.typography" title="Typography">
+				<div :class="$style.sectionBody">
+					<div v-if="themeFont" :class="$style.row">
+						<N8nInputLabel label="Font" size="small">
+							<N8nSelect
+								:model-value="themeFont.family ?? ''"
+								size="small"
+								@update:model-value="themeFont.family = $event === '' ? undefined : $event"
+							>
+								<N8nOption
+									v-for="option in fontOptions"
+									:key="option.label"
+									:value="option.value"
+									:label="option.label"
+								/>
+							</N8nSelect>
+						</N8nInputLabel>
+					</div>
+					<div v-if="themeFont" :class="$style.row">
+						<N8nInputLabel
+							label="Heading font"
+							size="small"
+							tooltip-text="Used for the form title and question labels. Defaults to the body font."
+						>
+							<N8nSelect
+								:model-value="themeFont.headingFamily ?? ''"
+								size="small"
+								@update:model-value="themeFont.headingFamily = $event === '' ? undefined : $event"
+							>
+								<N8nOption
+									v-for="option in fontOptions"
+									:key="option.label"
+									:value="option.value"
+									:label="option.label"
+								/>
+							</N8nSelect>
+						</N8nInputLabel>
+					</div>
+				</div>
+			</N8nCollapsiblePanel>
+
+			<N8nCollapsiblePanel v-model="openSections.images" title="Images">
+				<div :class="$style.sectionBody">
+					<div :class="$style.row">
+						<N8nInputLabel label="Logo" size="small">
+							<div :class="$style.imageRow">
+								<N8nInput v-model="settings.theme.logoUrl" size="small" placeholder="https://…" />
+								<N8nIconButton
+									icon="upload"
+									type="secondary"
+									size="small"
+									title="Upload an image (max 300 KB)"
+									@click="pickImage(assignLogo)"
+								/>
+							</div>
+						</N8nInputLabel>
+					</div>
+					<div :class="$style.row">
+						<N8nInputLabel
+							label="Background image"
+							size="small"
+							tooltip-text="Shown behind the form card, covering the page"
+						>
+							<div :class="$style.imageRow">
+								<N8nInput
+									v-model="settings.theme.backgroundImageUrl"
+									size="small"
+									placeholder="https://…"
+								/>
+								<N8nIconButton
+									icon="upload"
+									type="secondary"
+									size="small"
+									title="Upload an image (max 300 KB)"
+									@click="pickImage(assignBackground)"
+								/>
+							</div>
+						</N8nInputLabel>
+					</div>
+					<div v-if="layoutCover" :class="$style.row">
+						<N8nInputLabel
+							label="Cover image"
+							size="small"
+							tooltip-text="A featured image shown as a banner above the form or beside it"
+						>
+							<div :class="$style.imageRow">
+								<N8nInput v-model="layoutCover.imageUrl" size="small" placeholder="https://…" />
+								<N8nIconButton
+									icon="upload"
+									type="secondary"
+									size="small"
+									title="Upload an image (max 300 KB)"
+									@click="pickImage(assignCover)"
+								/>
+							</div>
+						</N8nInputLabel>
+					</div>
+					<div v-if="layoutCover && layoutCover.imageUrl" :class="$style.row">
+						<N8nInputLabel label="Cover placement" size="small">
+							<N8nSelect
+								:model-value="layoutCover.split ?? 'none'"
+								size="small"
+								@update:model-value="layoutCover.split = $event"
+							>
+								<N8nOption
+									v-for="option in coverPlacementOptions"
+									:key="option.value"
+									:value="option.value"
+									:label="option.label"
+								/>
+							</N8nSelect>
+						</N8nInputLabel>
+					</div>
+				</div>
+			</N8nCollapsiblePanel>
+
+			<input
+				ref="imageFileInput"
+				type="file"
+				accept="image/*"
+				:class="$style.hiddenFileInput"
+				@change="onImagePicked"
+			/>
 		</template>
 	</div>
 </template>
@@ -693,5 +868,65 @@ async function onSyncDataTable() {
 	border-radius: var(--radius);
 	padding: 2px;
 	background: transparent;
+}
+
+.sectionBody {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing--2xs);
+	padding: var(--spacing--3xs) var(--spacing--2xs) var(--spacing--2xs);
+}
+
+.contrastWarning {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--spacing--4xs);
+	color: var(--color--warning);
+}
+
+.sliderRow {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing--2xs);
+}
+
+.slider {
+	flex: 1;
+	accent-color: var(--color--primary);
+}
+
+.imageRow {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing--4xs);
+
+	> :first-child {
+		flex: 1;
+	}
+}
+
+.dataTableCard {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing--2xs);
+	border: var(--border);
+	border-radius: var(--radius);
+	padding: var(--spacing--3xs) var(--spacing--2xs);
+}
+
+.dataTableIcon {
+	color: var(--color--primary);
+	flex-shrink: 0;
+}
+
+.dataTableMeta {
+	display: flex;
+	flex-direction: column;
+	flex: 1;
+	min-width: 0;
+}
+
+.hiddenFileInput {
+	display: none;
 }
 </style>

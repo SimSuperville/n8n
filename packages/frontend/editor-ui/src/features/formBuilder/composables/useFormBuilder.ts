@@ -524,6 +524,20 @@ export function useFormBuilder(triggerNodeId: string) {
 		return nodeId ? workflowDocumentStore.value.getNodeById(nodeId) : undefined;
 	});
 
+	/** Display info for the linked table; name comes from the insert node's resource locator */
+	const dataTableInfo = computed(() => {
+		const link = storage.value;
+		if (!link) return null;
+		const locator = storageNode.value?.parameters?.dataTableId as
+			| { cachedResultName?: string }
+			| undefined;
+		return { id: link.dataTableId, name: locator?.cachedResultName ?? 'Data table' };
+	});
+
+	const dataTableProjectId = computed(
+		() => workflowDocumentStore.value.homeProject?.id ?? projectsStore.personalProject?.id,
+	);
+
 	/** 'none' | 'synced' | 'outOfSync' | 'nodeMissing' */
 	const dataTableState = computed(() => {
 		if (!storage.value) return 'none';
@@ -730,6 +744,8 @@ export function useFormBuilder(triggerNodeId: string) {
 		upgradeToV3,
 		storage,
 		dataTableState,
+		dataTableInfo,
+		dataTableProjectId,
 		connectDataTable,
 		syncDataTable,
 	};

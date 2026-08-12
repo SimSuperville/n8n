@@ -17,8 +17,6 @@ const props = defineProps<{
 	/** Builder preview: renders a selection affordance and emits select on click */
 	selectable?: boolean;
 	selected?: boolean;
-	/** Builder preview: renders a drop indicator when a drag hovers this field */
-	dropIndicator?: 'before' | 'after' | null;
 }>();
 
 const emit = defineEmits<{
@@ -33,8 +31,6 @@ const fieldClasses = computed(() => ({
 	'n8n-form-field': true,
 	'n8n-form-field--selectable': props.selectable,
 	'n8n-form-field--selected': props.selected,
-	'n8n-form-field--drop-before': props.dropIndicator === 'before',
-	'n8n-form-field--drop-after': props.dropIndicator === 'after',
 }));
 /* eslint-enable @typescript-eslint/naming-convention */
 
