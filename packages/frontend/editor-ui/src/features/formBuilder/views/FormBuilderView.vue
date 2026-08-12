@@ -4,6 +4,8 @@ import { FORM_FIELD_TYPE_MIME, N8nFormRenderer } from '@n8n/forms';
 import { computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 
+import { useTelemetry } from '@n8n/composables/useTelemetry';
+
 import {
 	N8nButton,
 	N8nIcon,
@@ -24,9 +26,15 @@ const props = defineProps<{
 
 const router = useRouter();
 const builder = useFormBuilder(props.nodeId);
+const telemetry = useTelemetry();
 
 onMounted(() => {
 	builder.load();
+	telemetry.track('User opened form builder', {
+		workflow_id: props.workflowId,
+		trigger_node_id: props.nodeId,
+		page_count: builder.pages.filter((page) => page.kind === 'page').length,
+	});
 });
 
 const paletteTypes = computed(() =>
@@ -76,7 +84,9 @@ const layoutMode = computed(() => builder.formSettings.value?.layout.mode ?? 'cl
 
 function setLayoutMode(mode: string) {
 	const settings = builder.formSettings.value;
-	if (settings) settings.layout.mode = mode as 'classic' | 'oneAtATime';
+	if (!settings) return;
+	settings.layout.mode = mode as 'classic' | 'oneAtATime';
+	telemetry.track('User changed form layout mode', { mode });
 }
 
 function onPaletteDragStart(fieldType: string, event: DragEvent) {

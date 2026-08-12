@@ -2,6 +2,8 @@
 import { uid, type FormChoiceOption } from '@n8n/form-core';
 import { computed, ref } from 'vue';
 
+import { useToast } from '@n8n/composables/useToast';
+
 import {
 	N8nButton,
 	N8nIconButton,
@@ -104,6 +106,44 @@ const coverPlacementOptions = [
 	{ label: 'Left half', value: 'left' },
 	{ label: 'Right half', value: 'right' },
 ];
+
+// --- data table responses ---
+const toast = useToast();
+const dataTableBusy = ref(false);
+
+async function onConnectDataTable() {
+	dataTableBusy.value = true;
+	try {
+		const table = await props.builder.connectDataTable();
+		if (table) {
+			toast.showMessage({
+				title: 'Data table created',
+				message: `Responses will be saved to "${table.name}". A Data table node was added after the last page.`,
+				type: 'success',
+			});
+		}
+	} catch (error) {
+		toast.showError(error, 'Could not create the data table');
+	} finally {
+		dataTableBusy.value = false;
+	}
+}
+
+async function onSyncDataTable() {
+	dataTableBusy.value = true;
+	try {
+		await props.builder.syncDataTable();
+		toast.showMessage({
+			title: 'Columns synced',
+			message: 'The data table and its node now match the form fields.',
+			type: 'success',
+		});
+	} catch (error) {
+		toast.showError(error, 'Could not sync the data table');
+	} finally {
+		dataTableBusy.value = false;
+	}
+}
 </script>
 
 <template>
@@ -424,6 +464,51 @@ const coverPlacementOptions = [
 					</N8nSelect>
 				</N8nInputLabel>
 			</div>
+
+			<div :class="$style.sectionTitle">Responses</div>
+			<template v-if="builder.dataTableState.value === 'none'">
+				<N8nText size="xsmall" color="text-light">
+					Store every submission as a row in an n8n Data Table — one column per field.
+				</N8nText>
+				<N8nButton
+					type="secondary"
+					size="small"
+					icon="table"
+					:loading="dataTableBusy"
+					data-test-id="form-builder-connect-data-table"
+					@click="onConnectDataTable"
+				>
+					Save responses to a Data Table
+				</N8nButton>
+			</template>
+			<template v-else-if="builder.dataTableState.value === 'nodeMissing'">
+				<N8nText size="xsmall" color="danger">
+					The linked Data table node was removed from the canvas. Delete the storage link in the
+					form JSON, or undo the node deletion.
+				</N8nText>
+			</template>
+			<template v-else>
+				<N8nText size="xsmall" color="text-light">
+					Responses are saved via the linked Data table node on the canvas.
+				</N8nText>
+				<N8nText v-if="builder.dataTableState.value === 'synced'" size="xsmall" color="success">
+					✓ Columns match the form fields
+				</N8nText>
+				<template v-else>
+					<N8nText size="xsmall" color="warning">
+						Fields changed since the table was connected.
+					</N8nText>
+					<N8nButton
+						type="secondary"
+						size="small"
+						:loading="dataTableBusy"
+						data-test-id="form-builder-sync-data-table"
+						@click="onSyncDataTable"
+					>
+						Sync columns
+					</N8nButton>
+				</template>
+			</template>
 
 			<div :class="$style.sectionTitle">Typography</div>
 			<div v-if="themeFont" :class="$style.row">
