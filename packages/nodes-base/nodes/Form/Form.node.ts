@@ -34,6 +34,7 @@ import {
 	prepareFormReturnItem,
 	validateFormPageAuth,
 } from './utils/utils';
+import { editFormJsonOption } from './v3/edit-form-json-option';
 import { formDefinitionProperty } from './v3/form-definition-property';
 import {
 	handleFormPageSubmissionV3,
@@ -193,6 +194,7 @@ const pageProperties = updateDisplayOptions(
 					type: 'string',
 					default: 'Submit',
 				},
+				editFormJsonOption,
 			],
 		},
 	],
@@ -205,6 +207,14 @@ const completionProperties = updateDisplayOptions(
 		},
 	},
 	[
+		{
+			// Rendered by the editor as an "Open form builder" shortcut on v3 endings
+			displayName: 'Form Builder',
+			name: 'formBuilderShortcut',
+			type: 'notice',
+			default: '',
+			displayOptions: { show: { '@version': [{ _cnd: { gte: 3 } }] } },
+		},
 		{
 			// eslint-disable-next-line n8n-nodes-base/node-param-display-name-miscased
 			displayName: 'On n8n Form Submission',

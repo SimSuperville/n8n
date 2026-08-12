@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { safeParseFormDefinition } from '@n8n/form-core';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { N8nButton, N8nInput, N8nText } from '@n8n/design-system';
@@ -18,6 +18,8 @@ const props = defineProps<{
 	value: string;
 	node: INodeUi | null;
 	isReadOnly?: boolean;
+	/** Ending nodes have no definition; render only the builder shortcut */
+	shortcutOnly?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -29,11 +31,28 @@ const workflowId = useWorkflowId();
 const workflowDocumentStore = injectWorkflowDocumentStore();
 const ndvStore = injectNDVStoreIfProvided();
 
-const showJson = ref(false);
 const jsonDraft = ref('');
 const jsonError = ref<string | null>(null);
 
 const parsed = computed(() => safeParseFormDefinition(props.value ?? {}));
+
+// The JSON editor is opt-in via the node's Options > "Edit Form JSON" entry
+const showJson = computed(() => {
+	if (props.shortcutOnly) return false;
+	const options = props.node?.parameters?.options as { editFormJson?: boolean } | undefined;
+	return options?.editFormJson === true;
+});
+
+watch(
+	showJson,
+	(visible) => {
+		if (visible) {
+			jsonDraft.value = props.value ?? '';
+			jsonError.value = null;
+		}
+	},
+	{ immediate: true },
+);
 
 const summary = computed(() => {
 	if (!parsed.value.success) return null;
@@ -72,14 +91,6 @@ async function openBuilder() {
 	ndvStore?.value?.unsetActiveNodeName();
 }
 
-function toggleJson() {
-	if (!showJson.value) {
-		jsonDraft.value = props.value ?? '';
-		jsonError.value = null;
-	}
-	showJson.value = !showJson.value;
-}
-
 function applyJson() {
 	const result = safeParseFormDefinition(jsonDraft.value);
 	if (!result.success) {
@@ -88,22 +99,28 @@ function applyJson() {
 	}
 	jsonError.value = null;
 	emit('valueChanged', { name: props.path, value: jsonDraft.value });
-	showJson.value = false;
 }
 </script>
 
 <template>
 	<div :class="$style.container" data-test-id="form-definition-parameter">
-		<div v-if="summary" :class="$style.summary">
-			<N8nText bold size="small">{{ summary.title }}</N8nText>
-			<N8nText size="xsmall" color="text-light">
-				{{ summary.fields }}<template v-if="summary.logic"> · {{ summary.logic }}</template>
-			</N8nText>
-		</div>
+		<template v-if="!shortcutOnly">
+			<div v-if="summary" :class="$style.summary">
+				<N8nText bold size="small">{{ summary.title }}</N8nText>
+				<N8nText size="xsmall" color="text-light">
+					{{ summary.fields }}<template v-if="summary.logic"> · {{ summary.logic }}</template>
+				</N8nText>
+			</div>
+			<div v-else :class="$style.summary">
+				<N8nText size="small" color="danger">The form definition is invalid</N8nText>
+				<N8nText v-if="!parsed.success" size="xsmall" color="text-light">
+					{{ parsed.issues.slice(0, 2).join('; ') }}
+				</N8nText>
+			</div>
+		</template>
 		<div v-else :class="$style.summary">
-			<N8nText size="small" color="danger">The form definition is invalid</N8nText>
-			<N8nText v-if="!parsed.success" size="xsmall" color="text-light">
-				{{ parsed.issues.slice(0, 2).join('; ') }}
+			<N8nText size="xsmall" color="text-light">
+				This ending is part of a form. Edit the form's pages and design in the builder.
 			</N8nText>
 		</div>
 
@@ -116,9 +133,6 @@ function applyJson() {
 				@click="openBuilder"
 			>
 				Open form builder
-			</N8nButton>
-			<N8nButton size="small" type="tertiary" text @click="toggleJson">
-				{{ showJson ? 'Hide JSON' : 'Edit JSON' }}
 			</N8nButton>
 		</div>
 

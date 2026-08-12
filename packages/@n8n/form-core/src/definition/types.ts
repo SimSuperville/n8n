@@ -32,7 +32,8 @@ export interface FormTheme {
 	colors?: FormThemeColors;
 	font?: FormThemeFont;
 	buttonStyle?: 'solid' | 'outline';
-	radius?: 'none' | 'sm' | 'md' | 'lg' | 'pill';
+	/** Corner radius in px; legacy documents may carry a named preset */
+	radius?: number | 'none' | 'sm' | 'md' | 'lg' | 'pill';
 	colorScheme?: 'light' | 'dark' | 'auto';
 	customCss?: string;
 }

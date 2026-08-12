@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { FormDefinition } from '@n8n/form-core';
+import type { FormDefinition, FormElement } from '@n8n/form-core';
 import { computed, ref, toRef, nextTick, watch, onMounted } from 'vue';
 
 import FieldControl from './FieldControl.vue';
@@ -58,7 +58,9 @@ const errorEntries = computed(() =>
 );
 
 const radiusValue = computed(() => {
-	switch (props.definition.theme.radius) {
+	const radius = props.definition.theme.radius;
+	if (typeof radius === 'number') return `${radius}px`;
+	switch (radius) {
 		case 'none':
 			return '0';
 		case 'sm':
@@ -75,12 +77,31 @@ const radiusValue = computed(() => {
 const containerWidth = computed(() => {
 	switch (props.definition.layout.containerWidth) {
 		case 'narrow':
-			return '400px';
-		case 'wide':
-			return '640px';
-		default:
 			return '480px';
+		case 'wide':
+			return '800px';
+		default:
+			// One-at-a-time is a stage, not a form column — give it room
+			return props.definition.layout.mode === 'oneAtATime' ? '800px' : '640px';
 	}
+});
+
+/**
+ * Text and heading colors follow the card color automatically so they always
+ * contrast; an explicit theme.colors.text (JSON authors) still wins.
+ */
+const autoTextColors = computed(() => {
+	const { colors } = props.definition.theme;
+	if (!colors?.surface || colors.text) return null;
+	const match = /^#?([0-9a-f]{6})$/i.exec(colors.surface.trim());
+	if (!match) return null;
+	const [r, g, b] = [0, 2, 4]
+		.map((offset) => parseInt(match[1].slice(offset, offset + 2), 16) / 255)
+		.map((channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4));
+	const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+	return luminance > 0.35
+		? { text: '#555555', heading: '#525356', border: '#dbdfe7' }
+		: { text: '#d6d6db', heading: '#f2f2f4', border: '#5c5e66' };
 });
 
 const cover = computed(() => props.definition.layout.cover);
@@ -124,8 +145,16 @@ const themeVars = computed(() => {
 	if (theme.colors?.primary) vars['--n8n-form-color-primary'] = theme.colors.primary;
 	if (theme.colors?.background) vars['--n8n-form-color-background'] = theme.colors.background;
 	if (theme.colors?.surface) vars['--n8n-form-color-surface'] = theme.colors.surface;
-	if (theme.colors?.text) vars['--n8n-form-color-text'] = theme.colors.text;
+	if (theme.colors?.text) {
+		vars['--n8n-form-color-text'] = theme.colors.text;
+		vars['--n8n-form-color-heading'] = theme.colors.text;
+	}
 	if (theme.colors?.error) vars['--n8n-form-color-error'] = theme.colors.error;
+	if (autoTextColors.value) {
+		vars['--n8n-form-color-text'] = autoTextColors.value.text;
+		vars['--n8n-form-color-heading'] = autoTextColors.value.heading;
+		vars['--n8n-form-color-border'] = autoTextColors.value.border;
+	}
 	if (theme.font?.family) vars['--n8n-form-font-family'] = theme.font.family;
 	if (theme.font?.headingFamily) vars['--n8n-form-font-heading'] = theme.font.headingFamily;
 	if (theme.backgroundImageUrl) {
@@ -257,17 +286,16 @@ function onStepDrop(event: DragEvent) {
 // --- drag and drop (classic builder preview) ---
 const dropIndex = ref<number | null>(null);
 
-function dropIndicatorFor(index: number): 'before' | 'after' | null {
-	if (dropIndex.value === null) return null;
-	if (dropIndex.value === index) return 'before';
-	if (
-		index === previewElements.value.length - 1 &&
-		dropIndex.value === previewElements.value.length
-	) {
-		return 'after';
+const DROP_ZONE_ID = '__dropzone__';
+
+/** Fields with a drop-zone placeholder spliced in; siblings animate out of its way */
+const previewList = computed<Array<FormElement | { id: typeof DROP_ZONE_ID }>>(() => {
+	const items: Array<FormElement | { id: typeof DROP_ZONE_ID }> = [...previewElements.value];
+	if (props.mode === 'preview' && dropIndex.value !== null) {
+		items.splice(Math.min(dropIndex.value, items.length), 0, { id: DROP_ZONE_ID });
 	}
-	return null;
-}
+	return items;
+});
 
 function onFieldDragStart(elementId: string, event: DragEvent) {
 	event.dataTransfer?.setData(ELEMENT_ID_MIME, elementId);
@@ -282,14 +310,28 @@ function isFormDrag(event: DragEvent): boolean {
 function onFieldsDragOver(event: DragEvent) {
 	if (props.mode !== 'preview' || !isFormDrag(event)) return;
 	event.preventDefault();
-	if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+	if (event.dataTransfer) {
+		// The effect must match the source's effectAllowed or browsers cancel the drop:
+		// palette items are dragged as 'copy', existing fields as 'move'
+		event.dataTransfer.dropEffect = event.dataTransfer.types.includes(FIELD_TYPE_MIME)
+			? 'copy'
+			: 'move';
+	}
 
 	const container = event.currentTarget as HTMLElement;
+	// The open drop zone shifts every later field down; subtract that displacement
+	// so the target index tracks the cursor instead of drifting upward
+	const zone = container.querySelector<HTMLElement>('.n8n-form-drop-zone');
+	const zoneOffset =
+		zone === null
+			? 0
+			: zone.getBoundingClientRect().height + (parseFloat(getComputedStyle(container).rowGap) || 0);
 	const fields = [...container.querySelectorAll<HTMLElement>('[data-element-id]')];
 	let index = fields.length;
 	for (let i = 0; i < fields.length; i++) {
 		const rect = fields[i].getBoundingClientRect();
-		if (event.clientY < rect.top + rect.height / 2) {
+		const top = dropIndex.value !== null && i >= dropIndex.value ? rect.top - zoneOffset : rect.top;
+		if (event.clientY < top + rect.height / 2) {
 			index = i;
 			break;
 		}
@@ -467,25 +509,31 @@ defineExpose({ runtime });
 					name="n8n-form-field-fade"
 					tag="div"
 					class="n8n-form-fields"
+					:class="{ 'n8n-form-fields--preview': mode === 'preview' }"
 					:duration="200"
 					@dragover="onFieldsDragOver"
 					@dragleave="onFieldsDragLeave"
 					@drop="onFieldsDrop"
 				>
-					<FieldControl
-						v-for="(element, index) in previewElements"
-						:key="element.id"
-						:element="element"
-						:value="runtime.values[element.id]"
-						:error="runtime.errors.value[element.id]"
-						:selectable="mode === 'preview'"
-						:selected="selectedElementId === element.id"
-						:drop-indicator="dropIndicatorFor(index)"
-						@update="runtime.setValue(element.id, $event)"
-						@select="emit('elementSelect', element.id)"
-						@update-label="emit('updateElementLabel', element.id, $event)"
-						@drag-start="onFieldDragStart(element.id, $event)"
-					/>
+					<template v-for="item in previewList" :key="item.id">
+						<div
+							v-if="item.id === DROP_ZONE_ID"
+							class="n8n-form-drop-zone"
+							aria-hidden="true"
+						></div>
+						<FieldControl
+							v-else
+							:element="item as FormElement"
+							:value="runtime.values[item.id]"
+							:error="runtime.errors.value[item.id]"
+							:selectable="mode === 'preview'"
+							:selected="selectedElementId === item.id"
+							@update="runtime.setValue(item.id, $event)"
+							@select="emit('elementSelect', item.id)"
+							@update-label="emit('updateElementLabel', item.id, $event)"
+							@drag-start="onFieldDragStart(item.id, $event)"
+						/>
+					</template>
 				</TransitionGroup>
 
 				<button class="n8n-form-submit" type="submit" :disabled="submitting">
@@ -506,7 +554,6 @@ defineExpose({ runtime });
 									:error="runtime.errors.value[currentElement.id]"
 									:selectable="mode === 'preview'"
 									:selected="selectedElementId === currentElement.id"
-									:drop-indicator="null"
 									@update="runtime.setValue(currentElement.id, $event)"
 									@select="emit('elementSelect', currentElement.id)"
 									@update-label="emit('updateElementLabel', currentElement.id, $event)"
@@ -688,6 +735,11 @@ defineExpose({ runtime });
 	flex-direction: column;
 	gap: var(--n8n-form-gap);
 	margin-bottom: 24px;
+}
+
+/* Keep a drop target even when the page has no fields yet */
+.n8n-form-fields--preview {
+	min-height: 48px;
 }
 
 .n8n-form-field {
@@ -872,7 +924,7 @@ defineExpose({ runtime });
 .n8n-form-root--one-at-a-time .n8n-form-card {
 	display: flex;
 	flex-direction: column;
-	min-height: min(520px, 78vh);
+	min-height: min(660px, 84vh);
 }
 
 .n8n-form-progress {
@@ -1017,8 +1069,11 @@ defineExpose({ runtime });
 .n8n-form-field--selectable {
 	cursor: pointer;
 	border-radius: var(--n8n-form-radius);
-	outline-offset: 4px;
 	position: relative;
+	/* Breathing room inside the selection outline; the negative margin keeps
+		the layout identical to the live form */
+	padding: 12px;
+	margin: -12px;
 }
 
 .n8n-form-field--selectable:hover {
@@ -1032,13 +1087,13 @@ defineExpose({ runtime });
 
 .n8n-form-drag-handle {
 	position: absolute;
-	top: 0;
-	right: -2px;
-	font-size: 13px;
+	top: 2px;
+	right: 2px;
+	font-size: 20px;
 	line-height: 1;
 	color: var(--n8n-form-color-border);
 	cursor: grab;
-	padding: 2px 4px;
+	padding: 4px 6px;
 	opacity: 0;
 	transition: opacity 0.12s ease;
 	user-select: none;
@@ -1054,23 +1109,13 @@ defineExpose({ runtime });
 	cursor: grabbing;
 }
 
-.n8n-form-field--drop-before::before,
-.n8n-form-field--drop-after::after {
-	content: '';
-	position: absolute;
-	left: 0;
-	right: 0;
-	height: 3px;
-	border-radius: 2px;
-	background: var(--n8n-form-color-primary);
-}
-
-.n8n-form-field--drop-before::before {
-	top: -12px;
-}
-
-.n8n-form-field--drop-after::after {
-	bottom: -12px;
+.n8n-form-drop-zone {
+	height: 52px;
+	border: 2px dashed var(--n8n-form-color-primary);
+	border-radius: var(--n8n-form-radius);
+	background: color-mix(in srgb, var(--n8n-form-color-primary) 8%, transparent);
+	/* Never intercept dragover — the fields container owns drop targeting */
+	pointer-events: none;
 }
 
 .n8n-form-text-editable {
@@ -1089,6 +1134,13 @@ defineExpose({ runtime });
 .n8n-form-rating-scale {
 	display: flex;
 	gap: 8px;
+	width: 100%;
+}
+
+/* Scale steps share the card width evenly instead of wrapping or staying small */
+.n8n-form-rating-scale .n8n-form-rating-step {
+	flex: 1 1 0;
+	min-width: 0;
 }
 
 .n8n-form-rating-step {
@@ -1122,6 +1174,11 @@ defineExpose({ runtime });
 .n8n-form-rating-stars {
 	display: flex;
 	gap: 4px;
+	width: 100%;
+}
+
+.n8n-form-rating-stars .n8n-form-rating-step {
+	flex: 1 1 0;
 }
 
 .n8n-form-rating-stars .n8n-form-rating-step {
@@ -1146,10 +1203,6 @@ defineExpose({ runtime });
 	font-size: 12px;
 	color: var(--n8n-form-color-text);
 	margin-top: 6px;
-}
-
-.n8n-form-rating-scale {
-	flex-wrap: wrap;
 }
 
 .n8n-form-yesno {
@@ -1179,6 +1232,11 @@ defineExpose({ runtime });
 	transition:
 		opacity 0.18s ease,
 		transform 0.18s ease;
+}
+
+/* Fields slide out of the way when the drop zone opens between them */
+.n8n-form-field-fade-move {
+	transition: transform 0.18s ease;
 }
 
 .n8n-form-field-fade-enter-from,

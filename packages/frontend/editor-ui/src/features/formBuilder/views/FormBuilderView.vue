@@ -4,14 +4,9 @@ import { FORM_FIELD_TYPE_MIME, N8nFormRenderer } from '@n8n/forms';
 import { computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 
-import {
-	N8nButton,
-	N8nIcon,
-	N8nIconButton,
-	N8nRadioButtons,
-	N8nText,
-	N8nTooltip,
-} from '@n8n/design-system';
+import { useTelemetry } from '@n8n/composables/useTelemetry';
+
+import { N8nButton, N8nIcon, N8nIconButton, N8nText, N8nTooltip } from '@n8n/design-system';
 
 import { VIEWS } from '@/app/constants';
 import { useFormBuilder } from '../composables/useFormBuilder';
@@ -31,9 +26,15 @@ const emit = defineEmits<{
 
 const router = useRouter();
 const builder = useFormBuilder(props.nodeId);
+const telemetry = useTelemetry();
 
 onMounted(() => {
 	builder.load();
+	telemetry.track('User opened form builder', {
+		workflow_id: props.workflowId,
+		trigger_node_id: props.nodeId,
+		page_count: builder.pages.filter((page) => page.kind === 'page').length,
+	});
 });
 
 const paletteTypes = computed(() =>
@@ -72,18 +73,6 @@ function pageLabel(index: number): string {
 	if (page.kind === 'completion') return 'Ending';
 	const title = page.definition?.page.title ?? page.definition?.title;
 	return title && title !== '' ? title : `Page ${index + 1}`;
-}
-
-const layoutModeOptions = [
-	{ label: 'Classic', value: 'classic' },
-	{ label: 'One at a time', value: 'oneAtATime' },
-];
-
-const layoutMode = computed(() => builder.formSettings.value?.layout.mode ?? 'classic');
-
-function setLayoutMode(mode: string) {
-	const settings = builder.formSettings.value;
-	if (settings) settings.layout.mode = mode as 'classic' | 'oneAtATime';
 }
 
 function onPaletteDragStart(fieldType: string, event: DragEvent) {
@@ -136,14 +125,6 @@ function onUpdateDescription(description: string) {
 			<N8nText v-if="builder.formSettings.value" bold size="medium">
 				{{ builder.formSettings.value.title || 'Untitled form' }}
 			</N8nText>
-			<N8nRadioButtons
-				v-if="builder.formSettings.value"
-				size="small"
-				:model-value="layoutMode"
-				:options="layoutModeOptions"
-				data-test-id="form-builder-layout-mode"
-				@update:model-value="setLayoutMode"
-			/>
 			<div :class="$style.topBarRight">
 				<N8nText size="small" color="text-light">{{ saveLabel }}</N8nText>
 				<N8nButton

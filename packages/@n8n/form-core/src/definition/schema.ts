@@ -96,7 +96,9 @@ const formThemeSchema = z.object({
 		})
 		.optional(),
 	buttonStyle: z.enum(['solid', 'outline']).optional(),
-	radius: z.enum(['none', 'sm', 'md', 'lg', 'pill']).optional(),
+	radius: z
+		.union([z.number().min(0).max(64), z.enum(['none', 'sm', 'md', 'lg', 'pill'])])
+		.optional(),
 	colorScheme: z.enum(['light', 'dark', 'auto']).optional(),
 	customCss: z.string().optional(),
 });

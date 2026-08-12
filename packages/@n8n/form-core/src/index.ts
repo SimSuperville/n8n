@@ -33,3 +33,4 @@ export {
 	type LegacyFormSettings,
 } from './migrate/from-legacy-fields';
 export { uid } from './utils/uid';
+export { toDataTableColumnName, toUniqueDataTableColumnName } from './utils/column-name';

@@ -188,6 +188,32 @@ describe('FormRenderer theming', () => {
 		expect(wrapper.find('.n8n-form-cover-pane').exists()).toBe(false);
 	});
 
+	it('derives readable text colors from a dark card color', () => {
+		const definition = makeDefinition();
+		definition.layout = { mode: 'classic' };
+		definition.theme = { colors: { surface: '#1f2430' } };
+		const wrapper = mount(FormRenderer, { props: { definition } });
+		const style = wrapper.find('.n8n-form-root').attributes('style') ?? '';
+		expect(style).toContain('--n8n-form-color-heading: #f2f2f4');
+		expect(style).toContain('--n8n-form-color-text: #d6d6db');
+	});
+
+	it('keeps default text colors on a light card and respects explicit text', () => {
+		const definition = makeDefinition();
+		definition.layout = { mode: 'classic' };
+		definition.theme = { colors: { surface: '#ffffff' } };
+		const light = mount(FormRenderer, { props: { definition } });
+		expect(light.find('.n8n-form-root').attributes('style') ?? '').toContain(
+			'--n8n-form-color-text: #555555',
+		);
+
+		definition.theme = { colors: { surface: '#1f2430', text: '#123456' } };
+		const explicit = mount(FormRenderer, { props: { definition } });
+		expect(explicit.find('.n8n-form-root').attributes('style') ?? '').toContain(
+			'--n8n-form-color-text: #123456',
+		);
+	});
+
 	it('applies font families as CSS custom properties', () => {
 		const wrapper = mount(FormRenderer, { props: { definition: themedDefinition() } });
 		const style = wrapper.find('.n8n-form-root').attributes('style') ?? '';
