@@ -214,13 +214,16 @@ const formBuilderNodeId = computed<string | null>(() =>
 	flex: 1;
 	min-height: 0;
 	display: flex;
+	/* Positioning context for .backToForm — anchoring to .host would put the
+	   button behind the logs panel instead of over the canvas */
+	position: relative;
 }
 
 /* Floats over the canvas so the user can get back to the form they were editing */
 .backToForm {
 	position: absolute;
 	right: var(--spacing--sm);
-	bottom: var(--spacing--sm);
+	top: var(--spacing--sm);
 	z-index: 1;
 }
 
