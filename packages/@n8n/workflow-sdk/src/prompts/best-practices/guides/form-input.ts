@@ -3,7 +3,7 @@ import { WorkflowTechnique } from '../types';
 
 export class FormInputBestPractices implements BestPracticesDocument {
 	readonly technique = WorkflowTechnique.FORM_INPUT;
-	readonly version = '1.0.0';
+	readonly version = '1.1.0';
 
 	private readonly documentation = `# Best Practices: Form Input Workflows
 
@@ -55,14 +55,93 @@ form flows where the path changes based on user input, creating personalized for
 
 ## Dynamic Form Fields
 
-For forms that require dynamic options (e.g., dropdowns populated from an API or previous step), generate the form
-definition in a Code node and pass it to the Form node as JSON. You can define forms using JSON for dynamic or
-conditional fields, and even generate form fields dynamically using a Code node if needed.
+For fields whose options genuinely depend on runtime data (e.g. a dropdown populated from an API or a
+previous step), generate the form definition in a Code node and pass it to the Form node as JSON.
+Use this only when the fields cannot be known upfront: for conditional *visibility* prefer \`page.logic\`
+on a static \`formDefinition\` (see above), which stays editable in the visual form builder.
 
 ## Input Validation
 
 Validate user input between steps to ensure data quality. If input is invalid, loop back to the relevant form step with
 an error message to guide the user to correct their submission. This prevents bad data from entering your system.
+
+## Form Definition (typeVersion 3 — PREFERRED)
+
+Set \`typeVersion: 3\` on \`formTrigger\` and \`form\` nodes and define the form with a single
+\`formDefinition\` parameter, passed as a **JSON string**. This is the model the visual form
+builder reads and writes; prefer it over the older \`formFields\` collection for every new form.
+Each node owns exactly one page.
+
+\`\`\`json
+{
+  "version": 1,
+  "id": "feedback-form",
+  "title": "How did we do?",
+  "description": "Two minutes, and it genuinely helps.",
+  "layout": { "mode": "oneAtATime", "containerWidth": "narrow", "density": "relaxed" },
+  "theme": { "colors": { "primary": "#3E5DFF" }, "radius": "lg", "buttonStyle": "solid" },
+  "page": {
+    "id": "page-1",
+    "elements": [
+      { "id": "name", "type": "text", "label": "Your name", "required": true, "placeholder": "Jane Doe" },
+      { "id": "rating", "type": "rating", "label": "Overall experience", "required": true,
+        "config": { "style": "stars", "max": 5 } },
+      { "id": "recommend", "type": "opinionScale", "label": "Would you recommend us?",
+        "config": { "min": 0, "max": 10, "lowLabel": "Not at all", "highLabel": "Absolutely" } }
+    ],
+    "logic": []
+  }
+}
+\`\`\`
+
+### Element types
+
+Every element needs \`id\` (stable, unique), \`type\`, and \`label\`. Optional on any element:
+\`description\`, \`required\`, \`placeholder\`, \`defaultValue\`, \`key\` (output key — defaults to the label).
+
+Use the richer types when they fit the question; do not reach for \`text\` and \`dropdown\` for everything.
+
+- \`text\`, \`textarea\`, \`email\`, \`password\`, \`phone\`, \`url\` — text inputs. \`text\`/\`textarea\` accept \`config: { minLength, maxLength }\`.
+- \`number\` — \`config: { min, max, step }\`
+- \`date\` — \`config: { format }\`
+- \`rating\` — \`config: { style: "stars" | "scale", min, max, lowLabel, highLabel }\`. Best for satisfaction/quality questions.
+- \`opinionScale\` — \`config: { min, max, lowLabel, highLabel }\`. Best for 0–10 / NPS-style questions.
+- \`yesNo\` — \`config: { yesLabel, noLabel }\`. Use instead of a two-option dropdown.
+- \`dropdown\`, \`radio\`, \`checkbox\` — \`config: { options: [{ id, label }], ... }\`. \`dropdown\` also takes \`multiple\`; \`checkbox\` also takes \`limitSelection: "exact" | "range" | "unlimited"\` with \`numberOfSelections\` / \`minSelections\` / \`maxSelections\`. Prefer \`radio\` for 2–5 visible choices, \`dropdown\` for longer lists.
+- \`file\` — \`config: { multiple, acceptFileTypes }\`
+- \`hidden\` — \`config: { value }\`. Carries a fixed value through the submission.
+- \`statement\` — \`config: { text }\`. Display-only copy; use it to introduce a section.
+- \`html\` — \`config: { html }\`. Display-only rich content.
+
+\`statement\` and \`html\` produce no output value; every other type does.
+
+### Presentation
+
+Fill in \`theme\` and \`layout\` — a form left at defaults looks unfinished. Choose values that suit
+the subject matter rather than always emitting the same ones.
+
+- \`layout.mode\`: \`"classic"\` shows all fields at once; \`"oneAtATime"\` shows one per screen and suits surveys and longer forms.
+- \`layout.containerWidth\`: \`"narrow" | "default" | "wide"\`; \`layout.density\`: \`"compact" | "default" | "relaxed"\`.
+- \`theme.colors\`: \`primary\`, \`background\`, \`surface\`, \`text\`, \`error\` (hex). Setting \`primary\` alone already lifts the form.
+- \`theme.radius\`: \`"none" | "sm" | "md" | "lg" | "pill"\`; \`theme.buttonStyle\`: \`"solid" | "outline"\`; \`theme.colorScheme\`: \`"light" | "dark" | "auto"\`.
+- \`theme.font\` / \`theme.font.headingFamily\` for typography, \`theme.logoUrl\` when the user supplies one.
+
+Give the form a real \`title\` and a short \`description\` — not the field list restated.
+
+### Conditional fields
+
+\`page.logic\` holds show/hide rules evaluated against answers on the same page:
+
+\`\`\`json
+{ "id": "vis_details", "when": { "combinator": "all",
+    "conditions": [ { "elementId": "recommend", "operator": "lte", "value": 6 } ] },
+  "actions": [ { "type": "show", "targetElementId": "details" } ] }
+\`\`\`
+
+Operators: \`eq\`, \`neq\`, \`contains\`, \`notContains\`, \`gt\`, \`gte\`, \`lt\`, \`lte\`, \`isEmpty\`, \`isNotEmpty\`, \`in\`, \`notIn\`.
+Prefer this over splitting a form across pages with IF nodes when the branching is only about field visibility.
+
+Every \`elementId\` / \`targetElementId\` must match an element \`id\` on that page.
 
 ## Recommended Nodes
 
@@ -82,8 +161,10 @@ Purpose: Displays form pages in multi-step form sequences
 Pitfalls:
 
 - Each Form node represents one page/step in your form
-- You can define forms using JSON for dynamic or conditional fields
-- Generate form fields dynamically using a Code node if needed for complex scenarios
+- Prefer \`typeVersion: 3\` with a \`formDefinition\` (see above) for static forms
+- Generate form fields dynamically using a Code node only when the fields genuinely depend on
+  runtime data (e.g. dropdown options fetched from an API) — a runtime-generated form cannot be
+  edited in the visual form builder, so never use it for a form whose fields are known upfront
 
 ### Storage Nodes
 
