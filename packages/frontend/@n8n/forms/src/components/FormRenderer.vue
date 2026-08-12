@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { FormDefinition } from '@n8n/form-core';
-import { computed, ref, toRef, nextTick } from 'vue';
+import { computed, ref, toRef, nextTick, watch, onMounted } from 'vue';
 
 import FieldControl from './FieldControl.vue';
 import { useFormRuntime } from '../composables/useFormRuntime';
@@ -83,6 +83,36 @@ const containerWidth = computed(() => {
 	}
 });
 
+const cover = computed(() => props.definition.layout.cover);
+const splitSide = computed(() => {
+	if (cover.value?.imageUrl === undefined || cover.value.imageUrl === '') return null;
+	return cover.value.split === 'left' || cover.value.split === 'right' ? cover.value.split : null;
+});
+const hasBannerCover = computed(
+	() =>
+		cover.value?.imageUrl !== undefined && cover.value.imageUrl !== '' && splitSide.value === null,
+);
+const coverStyle = computed(() =>
+	cover.value?.imageUrl
+		? { backgroundImage: `url(${JSON.stringify(cover.value.imageUrl)})` }
+		: undefined,
+);
+
+const isOneAtATime = computed(() => props.definition.layout.mode === 'oneAtATime');
+
+const rootClasses = computed(() => [
+	'n8n-form-root',
+	`n8n-form-root--density-${props.definition.layout.density ?? 'default'}`,
+	/* eslint-disable @typescript-eslint/naming-convention -- CSS class names */
+	{
+		'n8n-form-root--one-at-a-time': isOneAtATime.value,
+		'n8n-form-root--outline': props.definition.theme.buttonStyle === 'outline',
+		'n8n-form-root--split': splitSide.value !== null,
+		'n8n-form-root--split-right': splitSide.value === 'right',
+	},
+	/* eslint-enable @typescript-eslint/naming-convention */
+]);
+
 const themeVars = computed(() => {
 	const { theme } = props.definition;
 	/* eslint-disable @typescript-eslint/naming-convention -- CSS custom property names */
@@ -116,7 +146,115 @@ const previewElements = computed(() =>
 		: runtime.visibleElements.value,
 );
 
-// --- drag and drop (builder preview) ---
+// --- one-at-a-time stepping ---
+const stepIndex = ref(0);
+const stepDirection = ref<'forward' | 'back'>('forward');
+
+/** Question steps; logic-hidden elements are skipped because they never enter this list */
+const steps = computed(() => previewElements.value);
+const isReviewStep = computed(() => isOneAtATime.value && stepIndex.value >= steps.value.length);
+const currentElement = computed(() =>
+	isOneAtATime.value ? steps.value[stepIndex.value] : undefined,
+);
+const showHeader = computed(() => !isOneAtATime.value || stepIndex.value === 0);
+const isLastQuestion = computed(() => stepIndex.value === steps.value.length - 1);
+
+const stepTransitionName = computed(() =>
+	stepDirection.value === 'forward' ? 'n8n-form-step-next' : 'n8n-form-step-prev',
+);
+
+const progressPercent = computed(() => {
+	const total = steps.value.length;
+	if (total === 0) return 100;
+	return Math.round((Math.min(stepIndex.value, total) / total) * 100);
+});
+
+// An answer can logic-hide questions before the cursor; keep the index in range
+watch(
+	() => steps.value.length,
+	(length) => {
+		if (stepIndex.value > length) stepIndex.value = length;
+	},
+);
+
+async function focusCurrentStep() {
+	if (props.mode !== 'live') return;
+	await nextTick();
+	const element = currentElement.value;
+	if (element) document.getElementById(`n8n-form-el-${element.id}`)?.focus();
+}
+
+onMounted(() => {
+	if (isOneAtATime.value) void focusCurrentStep();
+});
+
+function goNext() {
+	if (isReviewStep.value) {
+		void onSubmit();
+		return;
+	}
+	const element = currentElement.value;
+	// The builder preview navigates freely; only live respondents are gated
+	if (element && props.mode === 'live' && !runtime.validateElement(element.id)) return;
+	stepDirection.value = 'forward';
+	stepIndex.value = Math.min(stepIndex.value + 1, steps.value.length);
+	void focusCurrentStep();
+}
+
+function goPrev() {
+	if (stepIndex.value === 0) return;
+	stepDirection.value = 'back';
+	stepIndex.value -= 1;
+	void focusCurrentStep();
+}
+
+function onCardKeydown(event: KeyboardEvent) {
+	if (!isOneAtATime.value || props.submitting) return;
+	const target = event.target as HTMLElement;
+	if (target.isContentEditable) return;
+	const tag = target.tagName;
+	if (event.key === 'Enter') {
+		// Textareas keep Enter for newlines; Cmd/Ctrl+Enter advances
+		if (tag === 'TEXTAREA' && !event.metaKey && !event.ctrlKey) return;
+		// Buttons (rating steps, yes/no, nav) act on their own click
+		if (tag === 'BUTTON' || tag === 'A') return;
+		event.preventDefault();
+		goNext();
+		return;
+	}
+	if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+		// Inputs and selects own their arrow keys (cursor, spinners, options)
+		if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
+		event.preventDefault();
+		if (event.key === 'ArrowDown') goNext();
+		else goPrev();
+	}
+}
+
+// Palette drops in one-at-a-time preview insert right after the question in view
+function onStepDragOver(event: DragEvent) {
+	if (props.mode !== 'preview') return;
+	if (!event.dataTransfer?.types.includes(FIELD_TYPE_MIME)) return;
+	event.preventDefault();
+	event.dataTransfer.dropEffect = 'copy';
+}
+
+function onStepDrop(event: DragEvent) {
+	if (props.mode !== 'preview') return;
+	const fieldType = event.dataTransfer?.getData(FIELD_TYPE_MIME);
+	if (fieldType === undefined || fieldType === '') return;
+	event.preventDefault();
+	emit('elementInsert', fieldType, steps.value[stepIndex.value + 1]?.id ?? null);
+	// Advance to the inserted question so the drop is visible
+	void nextTick().then(() => {
+		if (steps.value.length > stepIndex.value + 1) {
+			stepDirection.value = 'forward';
+			stepIndex.value += 1;
+		}
+	});
+}
+
+// --- drag and drop (classic builder preview) ---
 const dropIndex = ref<number | null>(null);
 
 function dropIndicatorFor(index: number): 'before' | 'after' | null {
@@ -229,7 +367,15 @@ async function onSubmit() {
 	emit('submit', runtime.buildFormData());
 }
 
-function focusField(elementId: string) {
+async function focusField(elementId: string) {
+	if (isOneAtATime.value) {
+		const index = steps.value.findIndex((element) => element.id === elementId);
+		if (index !== -1 && index !== stepIndex.value) {
+			stepDirection.value = index > stepIndex.value ? 'forward' : 'back';
+			stepIndex.value = index;
+			await nextTick();
+		}
+	}
 	document.getElementById(`n8n-form-el-${elementId}`)?.focus();
 }
 
@@ -237,93 +383,192 @@ defineExpose({ runtime });
 </script>
 
 <template>
-	<div class="n8n-form-root" :style="themeVars">
-		<form class="n8n-form-card" novalidate @submit.prevent="onSubmit">
-			<img
-				v-if="definition.theme.logoUrl"
-				class="n8n-form-logo"
-				:src="definition.theme.logoUrl"
-				alt=""
-			/>
-			<h1
-				v-if="definition.title || mode === 'preview'"
-				class="n8n-form-title"
-				:class="{ 'n8n-form-text-editable': mode === 'preview' }"
-				@dblclick="startTextEdit('title')"
-			>
-				<span
-					ref="titleElement"
-					:contenteditable="editingText === 'title'"
-					@blur="commitTextEdit"
-					@keydown="onTextEditKeydown"
-					>{{ definition.title || (mode === 'preview' ? 'Untitled form' : '') }}</span
-				>
-			</h1>
-			<p
-				v-if="definition.description || mode === 'preview'"
-				class="n8n-form-subtitle"
-				:class="{ 'n8n-form-text-editable': mode === 'preview' }"
-				@dblclick="startTextEdit('description')"
-			>
-				<span
-					ref="descriptionElement"
-					:contenteditable="editingText === 'description'"
-					@blur="commitTextEdit"
-					@keydown="onTextEditKeydown"
-					>{{ definition.description || (mode === 'preview' ? 'Add a description' : '') }}</span
-				>
-			</p>
+	<div :class="rootClasses" :style="themeVars">
+		<div v-if="splitSide" class="n8n-form-cover-pane" :style="coverStyle" aria-hidden="true"></div>
+		<form class="n8n-form-card" novalidate @submit.prevent="onSubmit" @keydown="onCardKeydown">
+			<div
+				v-if="hasBannerCover"
+				class="n8n-form-cover-banner"
+				:style="coverStyle"
+				aria-hidden="true"
+			></div>
 
 			<div
-				v-if="errorEntries.length > 0"
-				ref="summaryElement"
-				class="n8n-form-error-summary"
-				tabindex="-1"
-				role="alert"
-				aria-labelledby="n8n-form-error-summary-heading"
+				v-if="isOneAtATime"
+				class="n8n-form-progress"
+				role="progressbar"
+				:aria-valuenow="progressPercent"
+				aria-valuemin="0"
+				aria-valuemax="100"
 			>
-				<p id="n8n-form-error-summary-heading" class="n8n-form-error-summary-heading">
-					Fix the following to submit the form:
-				</p>
-				<ul>
-					<li v-for="entry in errorEntries" :key="entry.id">
-						<a href="#" @click.prevent="focusField(entry.id)">{{ entry.label }}</a
-						>: {{ entry.message }}
-					</li>
-				</ul>
+				<div class="n8n-form-progress-bar" :style="{ width: `${progressPercent}%` }"></div>
 			</div>
 
-			<!-- Explicit duration: element removal runs on a timer, so a throttled
-				requestAnimationFrame (background tab) can't leave fields stuck mid-leave -->
-			<TransitionGroup
-				name="n8n-form-field-fade"
-				tag="div"
-				class="n8n-form-fields"
-				:duration="200"
-				@dragover="onFieldsDragOver"
-				@dragleave="onFieldsDragLeave"
-				@drop="onFieldsDrop"
-			>
-				<FieldControl
-					v-for="(element, index) in previewElements"
-					:key="element.id"
-					:element="element"
-					:value="runtime.values[element.id]"
-					:error="runtime.errors.value[element.id]"
-					:selectable="mode === 'preview'"
-					:selected="selectedElementId === element.id"
-					:drop-indicator="dropIndicatorFor(index)"
-					@update="runtime.setValue(element.id, $event)"
-					@select="emit('elementSelect', element.id)"
-					@update-label="emit('updateElementLabel', element.id, $event)"
-					@drag-start="onFieldDragStart(element.id, $event)"
+			<template v-if="showHeader">
+				<img
+					v-if="definition.theme.logoUrl"
+					class="n8n-form-logo"
+					:src="definition.theme.logoUrl"
+					alt=""
 				/>
-			</TransitionGroup>
+				<h1
+					v-if="definition.title || mode === 'preview'"
+					class="n8n-form-title"
+					:class="{ 'n8n-form-text-editable': mode === 'preview' }"
+					@dblclick="startTextEdit('title')"
+				>
+					<span
+						ref="titleElement"
+						:contenteditable="editingText === 'title'"
+						@blur="commitTextEdit"
+						@keydown="onTextEditKeydown"
+						>{{ definition.title || (mode === 'preview' ? 'Untitled form' : '') }}</span
+					>
+				</h1>
+				<p
+					v-if="definition.description || mode === 'preview'"
+					class="n8n-form-subtitle"
+					:class="{ 'n8n-form-text-editable': mode === 'preview' }"
+					@dblclick="startTextEdit('description')"
+				>
+					<span
+						ref="descriptionElement"
+						:contenteditable="editingText === 'description'"
+						@blur="commitTextEdit"
+						@keydown="onTextEditKeydown"
+						>{{ definition.description || (mode === 'preview' ? 'Add a description' : '') }}</span
+					>
+				</p>
+			</template>
 
-			<button class="n8n-form-submit" type="submit" :disabled="submitting">
-				<span v-if="!submitting">{{ buttonLabel }}</span>
-				<span v-else class="n8n-form-spinner" aria-label="Submitting"></span>
-			</button>
+			<template v-if="!isOneAtATime">
+				<div
+					v-if="errorEntries.length > 0"
+					ref="summaryElement"
+					class="n8n-form-error-summary"
+					tabindex="-1"
+					role="alert"
+					aria-labelledby="n8n-form-error-summary-heading"
+				>
+					<p id="n8n-form-error-summary-heading" class="n8n-form-error-summary-heading">
+						Fix the following to submit the form:
+					</p>
+					<ul>
+						<li v-for="entry in errorEntries" :key="entry.id">
+							<a href="#" @click.prevent="focusField(entry.id)">{{ entry.label }}</a
+							>: {{ entry.message }}
+						</li>
+					</ul>
+				</div>
+
+				<!-- Explicit duration: element removal runs on a timer, so a throttled
+					requestAnimationFrame (background tab) can't leave fields stuck mid-leave -->
+				<TransitionGroup
+					name="n8n-form-field-fade"
+					tag="div"
+					class="n8n-form-fields"
+					:duration="200"
+					@dragover="onFieldsDragOver"
+					@dragleave="onFieldsDragLeave"
+					@drop="onFieldsDrop"
+				>
+					<FieldControl
+						v-for="(element, index) in previewElements"
+						:key="element.id"
+						:element="element"
+						:value="runtime.values[element.id]"
+						:error="runtime.errors.value[element.id]"
+						:selectable="mode === 'preview'"
+						:selected="selectedElementId === element.id"
+						:drop-indicator="dropIndicatorFor(index)"
+						@update="runtime.setValue(element.id, $event)"
+						@select="emit('elementSelect', element.id)"
+						@update-label="emit('updateElementLabel', element.id, $event)"
+						@drag-start="onFieldDragStart(element.id, $event)"
+					/>
+				</TransitionGroup>
+
+				<button class="n8n-form-submit" type="submit" :disabled="submitting">
+					<span v-if="!submitting">{{ buttonLabel }}</span>
+					<span v-else class="n8n-form-spinner" aria-label="Submitting"></span>
+				</button>
+			</template>
+
+			<template v-else>
+				<div class="n8n-form-step-viewport" @dragover="onStepDragOver" @drop="onStepDrop">
+					<Transition :name="stepTransitionName" mode="out-in" :duration="250">
+						<div :key="currentElement?.id ?? 'review'" class="n8n-form-step">
+							<template v-if="currentElement">
+								<div class="n8n-form-step-counter">{{ stepIndex + 1 }} of {{ steps.length }}</div>
+								<FieldControl
+									:element="currentElement"
+									:value="runtime.values[currentElement.id]"
+									:error="runtime.errors.value[currentElement.id]"
+									:selectable="mode === 'preview'"
+									:selected="selectedElementId === currentElement.id"
+									:drop-indicator="null"
+									@update="runtime.setValue(currentElement.id, $event)"
+									@select="emit('elementSelect', currentElement.id)"
+									@update-label="emit('updateElementLabel', currentElement.id, $event)"
+								/>
+								<div class="n8n-form-step-actions">
+									<button type="button" class="n8n-form-submit n8n-form-ok" @click="goNext">
+										{{ isLastQuestion ? 'Review' : 'OK' }}
+									</button>
+									<span class="n8n-form-enter-hint">press <kbd>Enter</kbd> ↵</span>
+								</div>
+							</template>
+							<template v-else>
+								<div class="n8n-form-step-counter">All done</div>
+								<h2 class="n8n-form-review-heading">Ready to submit?</h2>
+								<div
+									v-if="errorEntries.length > 0"
+									ref="summaryElement"
+									class="n8n-form-error-summary"
+									tabindex="-1"
+									role="alert"
+									aria-labelledby="n8n-form-error-summary-heading"
+								>
+									<p id="n8n-form-error-summary-heading" class="n8n-form-error-summary-heading">
+										Fix the following to submit the form:
+									</p>
+									<ul>
+										<li v-for="entry in errorEntries" :key="entry.id">
+											<a href="#" @click.prevent="focusField(entry.id)">{{ entry.label }}</a
+											>: {{ entry.message }}
+										</li>
+									</ul>
+								</div>
+								<button class="n8n-form-submit" type="submit" :disabled="submitting">
+									<span v-if="!submitting">{{ buttonLabel }}</span>
+									<span v-else class="n8n-form-spinner" aria-label="Submitting"></span>
+								</button>
+							</template>
+						</div>
+					</Transition>
+				</div>
+
+				<div class="n8n-form-step-nav">
+					<button
+						type="button"
+						class="n8n-form-step-nav-button"
+						aria-label="Previous question"
+						:disabled="stepIndex === 0"
+						@click="goPrev"
+					>
+						↑
+					</button>
+					<button
+						type="button"
+						class="n8n-form-step-nav-button"
+						aria-label="Next question"
+						:disabled="isReviewStep"
+						@click="goNext"
+					>
+						↓
+					</button>
+				</div>
+			</template>
 
 			<p v-if="appendAttribution" class="n8n-form-attribution">
 				Form automated with
@@ -348,6 +593,8 @@ defineExpose({ runtime });
 	--n8n-form-font-heading: var(--n8n-form-font-family);
 	--n8n-form-radius: 8px;
 	--n8n-form-container-width: 480px;
+	--n8n-form-gap: 20px;
+	--n8n-form-card-padding: 32px;
 
 	box-sizing: border-box;
 	display: flex;
@@ -357,6 +604,16 @@ defineExpose({ runtime });
 	background: var(--n8n-form-color-background);
 	font-family: var(--n8n-form-font-family);
 	color: var(--n8n-form-color-text);
+}
+
+.n8n-form-root--density-compact {
+	--n8n-form-gap: 12px;
+	--n8n-form-card-padding: 22px;
+}
+
+.n8n-form-root--density-relaxed {
+	--n8n-form-gap: 28px;
+	--n8n-form-card-padding: 44px;
 }
 
 .n8n-form-root *,
@@ -371,8 +628,40 @@ defineExpose({ runtime });
 	background: var(--n8n-form-color-surface);
 	border: 1px solid var(--n8n-form-color-border);
 	border-radius: var(--n8n-form-radius);
-	padding: 32px;
+	padding: var(--n8n-form-card-padding);
 	margin: auto 0;
+}
+
+/* --- cover image: split panes and banner --- */
+.n8n-form-root--split {
+	display: grid;
+	grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+	padding: 0;
+}
+
+.n8n-form-cover-pane {
+	background-size: cover;
+	background-position: center;
+	min-height: 100%;
+}
+
+.n8n-form-root--split .n8n-form-card {
+	justify-self: center;
+	align-self: center;
+	width: calc(100% - 48px);
+	margin: 24px 0;
+}
+
+.n8n-form-root--split-right .n8n-form-cover-pane {
+	order: 2;
+}
+
+.n8n-form-cover-banner {
+	height: 160px;
+	background-size: cover;
+	background-position: center;
+	margin: calc(-1 * var(--n8n-form-card-padding)) calc(-1 * var(--n8n-form-card-padding)) 24px;
+	border-radius: var(--n8n-form-radius) var(--n8n-form-radius) 0 0;
 }
 
 .n8n-form-logo {
@@ -397,7 +686,7 @@ defineExpose({ runtime });
 .n8n-form-fields {
 	display: flex;
 	flex-direction: column;
-	gap: 20px;
+	gap: var(--n8n-form-gap);
 	margin-bottom: 24px;
 }
 
@@ -533,6 +822,24 @@ defineExpose({ runtime });
 	cursor: default;
 }
 
+/* --- outline button style --- */
+.n8n-form-root--outline .n8n-form-submit {
+	background: transparent;
+	color: var(--n8n-form-color-primary);
+	border: 2px solid var(--n8n-form-color-primary);
+}
+
+.n8n-form-root--outline .n8n-form-submit:hover:not(:disabled) {
+	filter: none;
+	background: var(--n8n-form-color-primary);
+	color: #ffffff;
+}
+
+.n8n-form-root--outline .n8n-form-spinner {
+	border-color: color-mix(in srgb, currentcolor 30%, transparent);
+	border-top-color: currentcolor;
+}
+
 .n8n-form-spinner {
 	display: inline-block;
 	width: 16px;
@@ -559,6 +866,152 @@ defineExpose({ runtime });
 .n8n-form-attribution a {
 	color: var(--n8n-form-color-primary);
 	text-decoration: none;
+}
+
+/* --- one-at-a-time layout --- */
+.n8n-form-root--one-at-a-time .n8n-form-card {
+	display: flex;
+	flex-direction: column;
+	min-height: min(520px, 78vh);
+}
+
+.n8n-form-progress {
+	height: 4px;
+	background: var(--n8n-form-color-border);
+	border-radius: 2px;
+	margin-bottom: 20px;
+	overflow: hidden;
+	flex-shrink: 0;
+}
+
+.n8n-form-progress-bar {
+	height: 100%;
+	background: var(--n8n-form-color-primary);
+	border-radius: 2px;
+	transition: width 0.25s ease;
+}
+
+.n8n-form-step-viewport {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	min-height: 0;
+}
+
+.n8n-form-step {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.n8n-form-step .n8n-form-label {
+	font-size: 20px;
+	margin-bottom: 8px;
+}
+
+.n8n-form-step .n8n-form-description {
+	font-size: 14px;
+	margin-top: -4px;
+}
+
+.n8n-form-step-counter {
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--n8n-form-color-primary);
+}
+
+.n8n-form-step-actions {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.n8n-form-ok {
+	width: auto;
+	padding: 10px 28px;
+	min-height: 40px;
+}
+
+.n8n-form-enter-hint {
+	font-size: 12px;
+	color: var(--n8n-form-color-text);
+}
+
+.n8n-form-enter-hint kbd {
+	font-family: inherit;
+	font-size: 11px;
+	border: 1px solid var(--n8n-form-color-border);
+	border-bottom-width: 2px;
+	border-radius: 4px;
+	padding: 1px 5px;
+}
+
+.n8n-form-review-heading {
+	font-family: var(--n8n-form-font-heading);
+	color: var(--n8n-form-color-heading);
+	font-size: 20px;
+	font-weight: 600;
+	margin: 0;
+}
+
+.n8n-form-step-nav {
+	display: flex;
+	justify-content: flex-end;
+	gap: 6px;
+	margin-top: 16px;
+	flex-shrink: 0;
+}
+
+.n8n-form-step-nav-button {
+	font-family: inherit;
+	font-size: 16px;
+	line-height: 1;
+	width: 36px;
+	height: 32px;
+	color: #ffffff;
+	background: var(--n8n-form-color-primary);
+	border: 0;
+	border-radius: var(--n8n-form-radius);
+	cursor: pointer;
+}
+
+.n8n-form-step-nav-button:hover:not(:disabled) {
+	filter: brightness(0.95);
+}
+
+.n8n-form-step-nav-button:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+.n8n-form-step-next-enter-active,
+.n8n-form-step-next-leave-active,
+.n8n-form-step-prev-enter-active,
+.n8n-form-step-prev-leave-active {
+	transition:
+		opacity 0.22s ease,
+		transform 0.22s ease;
+}
+
+.n8n-form-step-next-enter-from {
+	opacity: 0;
+	transform: translateY(24px);
+}
+
+.n8n-form-step-next-leave-to {
+	opacity: 0;
+	transform: translateY(-24px);
+}
+
+.n8n-form-step-prev-enter-from {
+	opacity: 0;
+	transform: translateY(-24px);
+}
+
+.n8n-form-step-prev-leave-to {
+	opacity: 0;
+	transform: translateY(24px);
 }
 
 .n8n-form-field--selectable {
@@ -734,9 +1187,20 @@ defineExpose({ runtime });
 	transform: translateY(-4px);
 }
 
+@media (max-width: 720px) {
+	.n8n-form-root--split {
+		grid-template-columns: 1fr;
+		grid-template-rows: 180px auto;
+	}
+
+	.n8n-form-root--split-right .n8n-form-cover-pane {
+		order: 0;
+	}
+}
+
 @media (max-width: 520px) {
 	.n8n-form-card {
-		padding: 20px;
+		--n8n-form-card-padding: 20px;
 	}
 }
 </style>

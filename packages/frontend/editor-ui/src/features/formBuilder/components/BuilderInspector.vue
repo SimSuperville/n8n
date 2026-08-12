@@ -65,8 +65,45 @@ const themeColors = computed(() => {
 	return theme.colors;
 });
 
+const themeFont = computed(() => {
+	const theme = settings.value?.theme;
+	if (!theme) return null;
+	if (theme.font === undefined) theme.font = {};
+	return theme.font;
+});
+
+const layoutCover = computed(() => {
+	const layout = settings.value?.layout;
+	if (!layout) return null;
+	if (layout.cover === undefined) layout.cover = {};
+	return layout.cover;
+});
+
 const radiusOptions = ['none', 'sm', 'md', 'lg', 'pill'] as const;
 const widthOptions = ['narrow', 'default', 'wide'] as const;
+const densityOptions = ['compact', 'default', 'relaxed'] as const;
+
+// System font stacks only: the public form runs under a sandbox CSP that
+// blocks external font hosts, so every option must resolve locally.
+const fontOptions = [
+	{ label: 'Default (Open Sans)', value: '' },
+	{
+		label: 'System UI',
+		value: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+	},
+	{ label: 'Georgia (serif)', value: 'Georgia, "Times New Roman", serif' },
+	{ label: 'Palatino (serif)', value: '"Palatino Linotype", Palatino, Georgia, serif' },
+	{ label: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
+	{ label: 'Trebuchet MS', value: '"Trebuchet MS", "Segoe UI", sans-serif' },
+	{ label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
+	{ label: 'Courier (mono)', value: '"Courier New", Courier, monospace' },
+];
+
+const coverPlacementOptions = [
+	{ label: 'Banner (top of form)', value: 'none' },
+	{ label: 'Left half', value: 'left' },
+	{ label: 'Right half', value: 'right' },
+];
 </script>
 
 <template>
@@ -376,6 +413,58 @@ const widthOptions = ['narrow', 'default', 'wide'] as const;
 				</N8nInputLabel>
 			</div>
 			<div :class="$style.row">
+				<N8nInputLabel label="Button style" size="small">
+					<N8nSelect
+						:model-value="settings.theme.buttonStyle ?? 'solid'"
+						size="small"
+						@update:model-value="settings.theme.buttonStyle = $event"
+					>
+						<N8nOption value="solid" label="Solid" />
+						<N8nOption value="outline" label="Outline" />
+					</N8nSelect>
+				</N8nInputLabel>
+			</div>
+
+			<div :class="$style.sectionTitle">Typography</div>
+			<div v-if="themeFont" :class="$style.row">
+				<N8nInputLabel label="Font" size="small">
+					<N8nSelect
+						:model-value="themeFont.family ?? ''"
+						size="small"
+						@update:model-value="themeFont.family = $event === '' ? undefined : $event"
+					>
+						<N8nOption
+							v-for="option in fontOptions"
+							:key="option.label"
+							:value="option.value"
+							:label="option.label"
+						/>
+					</N8nSelect>
+				</N8nInputLabel>
+			</div>
+			<div v-if="themeFont" :class="$style.row">
+				<N8nInputLabel
+					label="Heading font"
+					size="small"
+					tooltip-text="Used for the form title and question labels. Defaults to the body font."
+				>
+					<N8nSelect
+						:model-value="themeFont.headingFamily ?? ''"
+						size="small"
+						@update:model-value="themeFont.headingFamily = $event === '' ? undefined : $event"
+					>
+						<N8nOption
+							v-for="option in fontOptions"
+							:key="option.label"
+							:value="option.value"
+							:label="option.label"
+						/>
+					</N8nSelect>
+				</N8nInputLabel>
+			</div>
+
+			<div :class="$style.sectionTitle">Layout</div>
+			<div :class="$style.row">
 				<N8nInputLabel label="Container width" size="small">
 					<N8nSelect
 						:model-value="settings.layout.containerWidth ?? 'default'"
@@ -391,6 +480,27 @@ const widthOptions = ['narrow', 'default', 'wide'] as const;
 					</N8nSelect>
 				</N8nInputLabel>
 			</div>
+			<div :class="$style.row">
+				<N8nInputLabel
+					label="Density"
+					size="small"
+					tooltip-text="Spacing between fields and around the form card"
+				>
+					<N8nSelect
+						:model-value="settings.layout.density ?? 'default'"
+						size="small"
+						@update:model-value="settings.layout.density = $event"
+					>
+						<N8nOption
+							v-for="option in densityOptions"
+							:key="option"
+							:value="option"
+							:label="option"
+						/>
+					</N8nSelect>
+				</N8nInputLabel>
+			</div>
+
 			<div :class="$style.sectionTitle">Images</div>
 			<div :class="$style.row">
 				<N8nInputLabel label="Logo URL" size="small">
@@ -408,6 +518,31 @@ const widthOptions = ['narrow', 'default', 'wide'] as const;
 						size="small"
 						placeholder="https://…"
 					/>
+				</N8nInputLabel>
+			</div>
+			<div v-if="layoutCover" :class="$style.row">
+				<N8nInputLabel
+					label="Cover image URL"
+					size="small"
+					tooltip-text="A featured image shown as a banner above the form or beside it"
+				>
+					<N8nInput v-model="layoutCover.imageUrl" size="small" placeholder="https://…" />
+				</N8nInputLabel>
+			</div>
+			<div v-if="layoutCover && layoutCover.imageUrl" :class="$style.row">
+				<N8nInputLabel label="Cover placement" size="small">
+					<N8nSelect
+						:model-value="layoutCover.split ?? 'none'"
+						size="small"
+						@update:model-value="layoutCover.split = $event"
+					>
+						<N8nOption
+							v-for="option in coverPlacementOptions"
+							:key="option.value"
+							:value="option.value"
+							:label="option.label"
+						/>
+					</N8nSelect>
 				</N8nInputLabel>
 			</div>
 		</template>

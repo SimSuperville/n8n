@@ -24,6 +24,8 @@ export interface FormRuntime {
 	setValue: (elementId: string, value: unknown) => void;
 	/** Validates all visible fields; returns true when the page is submittable */
 	validate: () => boolean;
+	/** Validates one element (one-at-a-time step); other elements' errors are untouched */
+	validateElement: (elementId: string) => boolean;
 	clearError: (elementId: string) => void;
 	/** Builds the multipart body with wire names (f_<elementId>) */
 	buildFormData: () => FormData;
@@ -109,6 +111,16 @@ export function useFormRuntime(options: UseFormRuntimeOptions): FormRuntime {
 		return result.errors.length === 0;
 	}
 
+	function validateElement(elementId: string): boolean {
+		const result = validateSubmission(options.definition.value.page, toValidationValues(values));
+		const error = result.errors.find((entry) => entry.elementId === elementId);
+		const next = { ...errors.value };
+		delete next[elementId];
+		if (error !== undefined) next[elementId] = error.message;
+		errors.value = next;
+		return error === undefined;
+	}
+
 	function buildFormData(): FormData {
 		const formData = new FormData();
 		const hidden = hiddenElementIds.value;
@@ -143,6 +155,7 @@ export function useFormRuntime(options: UseFormRuntimeOptions): FormRuntime {
 		setValue,
 		clearError,
 		validate,
+		validateElement,
 		buildFormData,
 		reset,
 	};
