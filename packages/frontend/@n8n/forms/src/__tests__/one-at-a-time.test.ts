@@ -214,6 +214,22 @@ describe('FormRenderer theming', () => {
 		);
 	});
 
+	it('derives button text color from the primary color', () => {
+		const definition = makeDefinition();
+		definition.layout = { mode: 'classic' };
+		definition.theme = { colors: { primary: '#ffee00' } };
+		const light = mount(FormRenderer, { props: { definition } });
+		expect(light.find('.n8n-form-root').attributes('style') ?? '').toContain(
+			'--n8n-form-color-on-primary: #26282e',
+		);
+
+		definition.theme = { colors: { primary: '#1f2430' } };
+		const dark = mount(FormRenderer, { props: { definition } });
+		expect(dark.find('.n8n-form-root').attributes('style') ?? '').toContain(
+			'--n8n-form-color-on-primary: #ffffff',
+		);
+	});
+
 	it('applies font families as CSS custom properties', () => {
 		const wrapper = mount(FormRenderer, { props: { definition: themedDefinition() } });
 		const style = wrapper.find('.n8n-form-root').attributes('style') ?? '';

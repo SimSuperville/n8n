@@ -220,15 +220,15 @@ function choiceLabels(element: FormElement | undefined): string[] {
 						</template>
 						<N8nIconButton
 							icon="trash-2"
-							type="tertiary"
+							variant="ghost"
 							size="small"
-							text
+							aria-label="Remove condition"
 							@click="removeCondition(index)"
 						/>
 					</div>
 				</div>
 
-				<N8nButton type="tertiary" size="small" icon="plus" @click="addCondition">
+				<N8nButton variant="outline" size="small" icon="plus" @click="addCondition">
 					Add condition
 				</N8nButton>
 			</template>

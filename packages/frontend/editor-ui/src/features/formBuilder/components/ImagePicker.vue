@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { onClickOutside } from '@vueuse/core';
 import { ref } from 'vue';
 
 import { useToast } from '@n8n/composables/useToast';
 
-import { N8nButton, N8nIconButton, N8nInput, N8nText, N8nTooltip } from '@n8n/design-system';
+import { N8nButton, N8nIcon, N8nInput, N8nText, N8nTooltip } from '@n8n/design-system';
 
 /**
  * Compact image control: an icon box that expands to an upload-first panel.
@@ -25,6 +26,11 @@ const MAX_IMAGE_BYTES = 300 * 1024;
 const toast = useToast();
 const expanded = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
+const root = ref<HTMLElement | null>(null);
+
+onClickOutside(root, () => {
+	expanded.value = false;
+});
 
 function onFilePicked(event: Event) {
 	const input = event.target as HTMLInputElement;
@@ -59,7 +65,7 @@ function clearImage() {
 </script>
 
 <template>
-	<div :class="$style.picker">
+	<div ref="root" :class="$style.picker">
 		<N8nTooltip :content="label">
 			<button
 				type="button"
@@ -68,13 +74,13 @@ function clearImage() {
 				@click="expanded = !expanded"
 			>
 				<img v-if="modelValue" :class="$style.thumb" :src="modelValue" alt="" />
-				<N8nIconButton v-else icon="image" type="tertiary" size="small" text tabindex="-1" />
+				<N8nIcon v-else icon="image" size="small" />
 			</button>
 		</N8nTooltip>
 
 		<div v-if="expanded" :class="$style.panel">
 			<N8nText size="xsmall" bold>{{ label }}</N8nText>
-			<N8nButton type="secondary" size="small" icon="upload" @click="fileInput?.click()">
+			<N8nButton variant="outline" size="small" icon="upload" @click="fileInput?.click()">
 				Upload image
 			</N8nButton>
 			<N8nInput
@@ -83,7 +89,7 @@ function clearImage() {
 				placeholder="…or paste an image URL"
 				@update:model-value="onUrlInput"
 			/>
-			<N8nButton v-if="modelValue" type="tertiary" size="small" icon="trash-2" @click="clearImage">
+			<N8nButton v-if="modelValue" variant="ghost" size="small" icon="trash-2" @click="clearImage">
 				Remove
 			</N8nButton>
 			<input

@@ -140,7 +140,7 @@ function applyJson() {
 			<N8nInput v-model="jsonDraft" type="textarea" :rows="12" :disabled="isReadOnly" />
 			<N8nText v-if="jsonError" size="xsmall" color="danger">{{ jsonError }}</N8nText>
 			<div :class="$style.actions">
-				<N8nButton size="small" type="secondary" :disabled="isReadOnly" @click="applyJson">
+				<N8nButton size="small" variant="outline" :disabled="isReadOnly" @click="applyJson">
 					Apply JSON
 				</N8nButton>
 			</div>

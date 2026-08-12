@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { listFieldTypes } from '@n8n/form-core';
 import { FORM_FIELD_TYPE_MIME, N8nFormRenderer } from '@n8n/forms';
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { useTelemetry } from '@n8n/composables/useTelemetry';
 
-import { N8nButton, N8nIcon, N8nIconButton, N8nText, N8nTooltip } from '@n8n/design-system';
+import {
+	N8nButton,
+	N8nCollapsiblePanel,
+	N8nIcon,
+	N8nIconButton,
+	N8nSwitch,
+	N8nText,
+	N8nTooltip,
+} from '@n8n/design-system';
 
 import { VIEWS } from '@/app/constants';
 import { useFormBuilder } from '../composables/useFormBuilder';
@@ -40,6 +48,43 @@ onMounted(() => {
 const paletteTypes = computed(() =>
 	listFieldTypes().filter((descriptor) => descriptor.name !== 'hidden'),
 );
+
+// --- single left panel: palette by default, swapped for field or form settings ---
+const settingsOpen = ref(false);
+const pagesOpen = ref(true);
+
+const panelView = computed<'palette' | 'field' | 'settings'>(() => {
+	if (builder.selectedElement.value) return 'field';
+	if (settingsOpen.value) return 'settings';
+	return 'palette';
+});
+
+// Selecting a field always wins, and Back from it should land on the palette
+watch(builder.selectedElementId, (id) => {
+	if (id !== null) settingsOpen.value = false;
+});
+
+function onPanelBack() {
+	builder.selectedElementId.value = null;
+	settingsOpen.value = false;
+}
+
+function onCanvasClick(event: MouseEvent) {
+	// Clicking off a field (empty canvas, card chrome) deselects it
+	if (!(event.target as HTMLElement).closest('.n8n-form-field--selectable')) {
+		builder.selectedElementId.value = null;
+	}
+}
+
+const isOneAtATime = computed(() => builder.formSettings.value?.layout.mode === 'oneAtATime');
+
+function setOneAtATime(enabled: boolean) {
+	const settings = builder.formSettings.value;
+	if (!settings) return;
+	const mode = enabled ? 'oneAtATime' : 'classic';
+	settings.layout.mode = mode;
+	telemetry.track('User changed form layout mode', { mode });
+}
 
 const previewDefinition = computed(() => {
 	const page = builder.selectedPage.value;
@@ -101,10 +146,9 @@ function onUpdateDescription(description: string) {
 		<div :class="$style.topBar">
 			<N8nButton
 				v-if="!props.embedded"
-				type="tertiary"
+				variant="ghost"
 				icon="arrow-left"
 				size="small"
-				text
 				@click="goBack"
 			>
 				Back to workflow
@@ -113,10 +157,9 @@ function onUpdateDescription(description: string) {
 				 so the rest of the workflow (storage nodes, credentials) stays reachable -->
 			<N8nButton
 				v-else
-				type="tertiary"
+				variant="ghost"
 				icon="workflow"
 				size="small"
-				text
 				data-test-id="form-builder-show-canvas"
 				@click="emit('show-canvas')"
 			>
@@ -129,7 +172,7 @@ function onUpdateDescription(description: string) {
 				<N8nText size="small" color="text-light">{{ saveLabel }}</N8nText>
 				<N8nButton
 					size="small"
-					type="secondary"
+					variant="outline"
 					:disabled="builder.saveState.value === 'saved'"
 					@click="builder.saveNow()"
 				>
@@ -144,7 +187,7 @@ function onUpdateDescription(description: string) {
 			</N8nText>
 			<N8nButton
 				v-if="builder.canUpgrade.value"
-				type="primary"
+				variant="solid"
 				size="medium"
 				data-test-id="form-builder-upgrade"
 				@click="builder.upgradeToV3()"
@@ -155,57 +198,90 @@ function onUpdateDescription(description: string) {
 
 		<div v-else :class="$style.panes">
 			<aside :class="$style.leftPane">
-				<div :class="$style.sectionTitle">Add field</div>
-				<div :class="$style.palette">
-					<button
-						v-for="descriptor in paletteTypes"
-						:key="descriptor.name"
-						:class="$style.paletteItem"
-						type="button"
-						draggable="true"
-						:data-test-id="`form-builder-add-${descriptor.name}`"
-						@click="builder.addElement(descriptor.name)"
-						@dragstart="onPaletteDragStart(descriptor.name, $event)"
-					>
-						{{ descriptor.label }}
-					</button>
-				</div>
-
-				<div :class="$style.sectionTitle">Pages</div>
-				<div :class="$style.pages">
-					<div
-						v-for="(page, index) in builder.pages"
-						:key="page.nodeId"
-						:class="[
-							$style.pageItem,
-							index === builder.selectedPageIndex.value ? $style.pageItemActive : '',
-						]"
-						@click="builder.selectPage(index)"
-					>
-						<span :class="$style.pageItemLabel">
-							<N8nIcon
-								:icon="page.kind === 'completion' ? 'circle-check' : 'file-text'"
-								size="small"
-							/>
-							{{ pageLabel(index) }}
-						</span>
-						<N8nTooltip v-if="index > 0 && page.kind === 'page'" content="Delete page">
+				<template v-if="panelView === 'palette'">
+					<div :class="$style.paletteHeader">
+						<div :class="$style.sectionTitle">Add field</div>
+						<N8nTooltip content="Form settings">
 							<N8nIconButton
-								icon="trash-2"
-								type="tertiary"
-								size="mini"
-								text
-								@click.stop="builder.removePage(page.nodeId)"
+								icon="settings"
+								variant="ghost"
+								size="small"
+								aria-label="Form settings"
+								:class="$style.settingsButton"
+								data-test-id="form-builder-open-settings"
+								@click="settingsOpen = true"
 							/>
 						</N8nTooltip>
 					</div>
-					<N8nButton type="tertiary" size="small" icon="plus" block @click="builder.addPage()">
-						Add page
-					</N8nButton>
-				</div>
+					<div :class="$style.palette">
+						<button
+							v-for="descriptor in paletteTypes"
+							:key="descriptor.name"
+							:class="$style.paletteItem"
+							type="button"
+							draggable="true"
+							:data-test-id="`form-builder-add-${descriptor.name}`"
+							@click="builder.addElement(descriptor.name)"
+							@dragstart="onPaletteDragStart(descriptor.name, $event)"
+						>
+							{{ descriptor.label }}
+						</button>
+					</div>
+
+					<N8nCollapsiblePanel v-model="pagesOpen" title="Pages">
+						<div :class="$style.pages">
+							<div
+								v-for="(page, index) in builder.pages"
+								:key="page.nodeId"
+								:class="[
+									$style.pageItem,
+									index === builder.selectedPageIndex.value ? $style.pageItemActive : '',
+								]"
+								@click="builder.selectPage(index)"
+							>
+								<span :class="$style.pageItemLabel">
+									<N8nIcon
+										:icon="page.kind === 'completion' ? 'circle-check' : 'file-text'"
+										size="small"
+									/>
+									{{ pageLabel(index) }}
+								</span>
+								<N8nTooltip v-if="index > 0 && page.kind === 'page'" content="Delete page">
+									<N8nIconButton
+										icon="trash-2"
+										variant="ghost"
+										size="mini"
+										aria-label="Delete page"
+										@click.stop="builder.removePage(page.nodeId)"
+									/>
+								</N8nTooltip>
+							</div>
+							<N8nButton
+								variant="outline"
+								size="small"
+								icon="plus"
+								:class="$style.addPageButton"
+								@click="builder.addPage()"
+							>
+								Add page
+							</N8nButton>
+							<div :class="$style.layoutToggle">
+								<N8nText size="small">One question at a time</N8nText>
+								<N8nSwitch
+									:model-value="isOneAtATime"
+									size="small"
+									data-test-id="form-builder-layout-mode"
+									@update:model-value="setOneAtATime"
+								/>
+							</div>
+						</div>
+					</N8nCollapsiblePanel>
+				</template>
+
+				<BuilderInspector v-else :builder="builder" :mode="panelView" @back="onPanelBack" />
 			</aside>
 
-			<main :class="$style.canvas">
+			<main :class="$style.canvas" @click="onCanvasClick">
 				<div v-if="builder.selectedPage.value?.kind === 'completion'" :class="$style.centerNote">
 					<N8nText color="text-light">
 						The form ending is configured on the node. Open it on the canvas to edit the completion
@@ -238,10 +314,6 @@ function onUpdateDescription(description: string) {
 					@update-description="onUpdateDescription"
 				/>
 			</main>
-
-			<aside :class="$style.rightPane">
-				<BuilderInspector :builder="builder" />
-			</aside>
 		</div>
 	</div>
 </template>
@@ -282,24 +354,16 @@ function onUpdateDescription(description: string) {
 
 .panes {
 	display: grid;
-	grid-template-columns: 220px minmax(0, 1fr) 300px;
+	grid-template-columns: 300px minmax(0, 1fr);
 	flex: 1;
 	min-height: 0;
 }
 
-.leftPane,
-.rightPane {
+.leftPane {
 	background: var(--color--background--light-3);
 	overflow-y: auto;
 	padding: var(--spacing--xs);
-}
-
-.leftPane {
 	border-right: var(--border);
-}
-
-.rightPane {
-	border-left: var(--border);
 }
 
 .sectionTitle {
@@ -308,6 +372,33 @@ function onUpdateDescription(description: string) {
 	letter-spacing: 0.04em;
 	color: var(--color--text--tint-1);
 	margin: var(--spacing--xs) 0 var(--spacing--3xs);
+}
+
+.paletteHeader {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.settingsButton {
+	color: var(--color--primary);
+
+	&:hover {
+		color: var(--color--primary--shade-1);
+	}
+}
+
+.addPageButton {
+	width: 100%;
+}
+
+.layoutToggle {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: var(--spacing--3xs) var(--spacing--2xs) 0;
+	border-top: var(--border);
+	margin-top: var(--spacing--4xs);
 }
 
 .palette {

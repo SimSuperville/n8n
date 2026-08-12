@@ -3,7 +3,6 @@ import { uid, type FormChoiceOption } from '@n8n/form-core';
 import { computed, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
-import { useTelemetry } from '@n8n/composables/useTelemetry';
 import { useToast } from '@n8n/composables/useToast';
 
 import {
@@ -16,7 +15,6 @@ import {
 	N8nOption,
 	N8nSelect,
 	N8nSwitch,
-	N8nTabs,
 	N8nText,
 } from '@n8n/design-system';
 
@@ -27,13 +25,13 @@ import LogicSection from './LogicSection.vue';
 
 const props = defineProps<{
 	builder: ReturnType<typeof useFormBuilder>;
+	/** Which panel the single left pane is showing */
+	mode: 'field' | 'settings';
 }>();
 
-const activeTab = ref<'field' | 'settings'>('field');
-const tabs = [
-	{ value: 'field', label: 'Field' },
-	{ value: 'settings', label: 'Settings' },
-];
+const emit = defineEmits<{
+	back: [];
+}>();
 
 const element = computed(() => props.builder.selectedElement.value);
 const settings = computed(() => props.builder.formSettings.value);
@@ -88,56 +86,12 @@ const layoutCover = computed(() => {
 });
 
 const openSections = reactive({
-	layout: true,
 	theme: true,
 	responses: true,
 	typography: false,
 });
 
-// --- layout mode (moved here from the top bar) ---
-const telemetry = useTelemetry();
 const toast = useToast();
-
-const isOneAtATime = computed(() => settings.value?.layout.mode === 'oneAtATime');
-
-function setOneAtATime(enabled: boolean) {
-	if (!settings.value) return;
-	const mode = enabled ? 'oneAtATime' : 'classic';
-	settings.value.layout.mode = mode;
-	telemetry.track('User changed form layout mode', { mode });
-}
-
-// --- WCAG AA contrast check: text follows the card color automatically,
-// so the button (white text on the primary color) is the remaining risk ---
-function relativeLuminance(hex: string): number | null {
-	const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
-	if (!match) return null;
-	const [r, g, b] = [0, 2, 4]
-		.map((offset) => parseInt(match[1].slice(offset, offset + 2), 16) / 255)
-		.map((channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4));
-	return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
-
-function contrastRatio(colorA: string, colorB: string): number | null {
-	const luminanceA = relativeLuminance(colorA);
-	const luminanceB = relativeLuminance(colorB);
-	if (luminanceA === null || luminanceB === null) return null;
-	const [lighter, darker] =
-		luminanceA > luminanceB ? [luminanceA, luminanceB] : [luminanceB, luminanceA];
-	return (lighter + 0.05) / (darker + 0.05);
-}
-
-const contrastWarnings = computed<string[]>(() => {
-	const colors = settings.value?.theme.colors ?? {};
-	const warnings: string[] = [];
-	const buttonText = contrastRatio('#ffffff', colors.primary ?? '#ff6d5a');
-	if (buttonText !== null && buttonText < 3) {
-		warnings.push(
-			`White button text on the primary color is ${buttonText.toFixed(1)}:1 — below the 3:1 AA minimum for controls`,
-		);
-	}
-	return warnings;
-});
 
 // Text color follows the card color automatically; changing the card drops any
 // explicit text color a legacy document may carry so the auto contrast engages
@@ -230,16 +184,21 @@ async function onSyncDataTable() {
 
 <template>
 	<div :class="$style.inspector">
-		<N8nTabs v-model="activeTab" :options="tabs" size="small" />
+		<button
+			type="button"
+			:class="$style.backLink"
+			data-test-id="form-builder-panel-back"
+			@click="emit('back')"
+		>
+			<N8nIcon icon="arrow-left" size="small" />
+			Back
+		</button>
+		<N8nText bold size="small">
+			{{ mode === 'field' ? element?.label || 'Field' : 'Form settings' }}
+		</N8nText>
 
-		<template v-if="activeTab === 'field'">
-			<div v-if="!element" :class="$style.empty">
-				<N8nText size="small" color="text-light">
-					Select a field in the preview to edit it, or add one from the palette.
-				</N8nText>
-			</div>
-
-			<template v-else>
+		<template v-if="mode === 'field'">
+			<template v-if="element">
 				<div :class="$style.row">
 					<N8nInputLabel label="Label" size="small">
 						<N8nInput v-model="element.label" size="small" />
@@ -291,13 +250,13 @@ async function onSyncDataTable() {
 						<N8nInput v-model="option.label" size="small" />
 						<N8nIconButton
 							icon="trash-2"
-							type="tertiary"
+							variant="ghost"
 							size="small"
-							text
+							aria-label="Remove option"
 							@click="removeOption(option.id)"
 						/>
 					</div>
-					<N8nButton type="tertiary" size="small" icon="plus" @click="addOption">
+					<N8nButton variant="outline" size="small" icon="plus" @click="addOption">
 						Add option
 					</N8nButton>
 					<div v-if="element.type === 'dropdown'" :class="$style.rowInline">
@@ -450,22 +409,22 @@ async function onSyncDataTable() {
 				<LogicSection :builder="builder" :element="element" />
 
 				<div :class="$style.actions">
-					<N8nButton
-						type="tertiary"
+					<N8nIconButton
+						variant="outline"
 						size="small"
 						icon="arrow-up"
-						square
+						aria-label="Move up"
 						@click="builder.moveElement(element.id, -1)"
 					/>
-					<N8nButton
-						type="tertiary"
+					<N8nIconButton
+						variant="outline"
 						size="small"
 						icon="arrow-down"
-						square
+						aria-label="Move down"
 						@click="builder.moveElement(element.id, 1)"
 					/>
 					<N8nButton
-						type="tertiary"
+						variant="outline"
 						size="small"
 						icon="copy"
 						@click="builder.duplicateElement(element.id)"
@@ -473,7 +432,7 @@ async function onSyncDataTable() {
 						Duplicate
 					</N8nButton>
 					<N8nButton
-						type="tertiary"
+						variant="outline"
 						size="small"
 						icon="trash-2"
 						@click="builder.removeElement(element.id)"
@@ -484,7 +443,7 @@ async function onSyncDataTable() {
 			</template>
 		</template>
 
-		<template v-else-if="activeTab === 'settings' && settings">
+		<template v-else-if="mode === 'settings' && settings">
 			<div :class="$style.row">
 				<N8nInputLabel label="Form title" size="small">
 					<N8nInput v-model="settings.title" size="small" />
@@ -500,20 +459,6 @@ async function onSyncDataTable() {
 					<N8nInput v-model="pageDefinition.title" size="small" />
 				</N8nInputLabel>
 			</div>
-
-			<N8nCollapsiblePanel v-model="openSections.layout" title="Layout">
-				<div :class="$style.sectionBody">
-					<div :class="$style.rowInline">
-						<N8nText size="small">One question at a time</N8nText>
-						<N8nSwitch
-							:model-value="isOneAtATime"
-							size="small"
-							data-test-id="form-builder-layout-mode"
-							@update:model-value="setOneAtATime"
-						/>
-					</div>
-				</div>
-			</N8nCollapsiblePanel>
 
 			<N8nCollapsiblePanel v-model="openSections.theme" title="Theme">
 				<div :class="$style.sectionBody">
@@ -550,15 +495,6 @@ async function onSyncDataTable() {
 							</div>
 						</N8nInputLabel>
 					</div>
-					<div
-						v-for="warning in contrastWarnings"
-						:key="warning"
-						:class="$style.contrastWarning"
-						data-test-id="form-builder-contrast-warning"
-					>
-						<N8nIcon icon="triangle-alert" size="small" />
-						<N8nText size="xsmall" color="warning">{{ warning }}</N8nText>
-					</div>
 					<div :class="$style.rowSplit">
 						<N8nInputLabel label="Logo" size="small">
 							<ImagePicker
@@ -591,18 +527,6 @@ async function onSyncDataTable() {
 							</N8nSelect>
 						</N8nInputLabel>
 					</div>
-					<div :class="$style.row">
-						<N8nInputLabel label="Button style" size="small">
-							<N8nSelect
-								:model-value="settings.theme.buttonStyle ?? 'solid'"
-								size="small"
-								@update:model-value="settings.theme.buttonStyle = $event"
-							>
-								<N8nOption value="solid" label="Solid" />
-								<N8nOption value="outline" label="Outline" />
-							</N8nSelect>
-						</N8nInputLabel>
-					</div>
 				</div>
 			</N8nCollapsiblePanel>
 
@@ -613,7 +537,7 @@ async function onSyncDataTable() {
 							Store every submission as a row in an n8n Data Table — one column per field.
 						</N8nText>
 						<N8nButton
-							type="secondary"
+							variant="outline"
 							size="small"
 							icon="table"
 							:loading="dataTableBusy"
@@ -659,7 +583,7 @@ async function onSyncDataTable() {
 						</div>
 						<N8nButton
 							v-if="builder.dataTableState.value === 'outOfSync'"
-							type="secondary"
+							variant="outline"
 							size="small"
 							:loading="dataTableBusy"
 							data-test-id="form-builder-sync-data-table"
@@ -722,8 +646,22 @@ async function onSyncDataTable() {
 	gap: var(--spacing--2xs);
 }
 
-.empty {
-	padding: var(--spacing--sm) 0;
+.backLink {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--spacing--4xs);
+	align-self: flex-start;
+	border: 0;
+	background: none;
+	padding: 0;
+	font-size: var(--font-size--2xs);
+	color: var(--color--text--tint-1);
+	cursor: pointer;
+
+	&:hover {
+		color: var(--color--primary);
+		text-decoration: underline;
+	}
 }
 
 .row {
@@ -783,13 +721,6 @@ async function onSyncDataTable() {
 	flex-direction: column;
 	gap: var(--spacing--2xs);
 	padding: var(--spacing--3xs) var(--spacing--2xs) var(--spacing--2xs);
-}
-
-.contrastWarning {
-	display: flex;
-	align-items: flex-start;
-	gap: var(--spacing--4xs);
-	color: var(--color--warning);
 }
 
 .backgroundRow {

@@ -86,6 +86,15 @@ const containerWidth = computed(() => {
 	}
 });
 
+function relativeLuminance(hex: string): number | null {
+	const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+	if (!match) return null;
+	const [r, g, b] = [0, 2, 4]
+		.map((offset) => parseInt(match[1].slice(offset, offset + 2), 16) / 255)
+		.map((channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4));
+	return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
 /**
  * Text and heading colors follow the card color automatically so they always
  * contrast; an explicit theme.colors.text (JSON authors) still wins.
@@ -93,15 +102,28 @@ const containerWidth = computed(() => {
 const autoTextColors = computed(() => {
 	const { colors } = props.definition.theme;
 	if (!colors?.surface || colors.text) return null;
-	const match = /^#?([0-9a-f]{6})$/i.exec(colors.surface.trim());
-	if (!match) return null;
-	const [r, g, b] = [0, 2, 4]
-		.map((offset) => parseInt(match[1].slice(offset, offset + 2), 16) / 255)
-		.map((channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4));
-	const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+	const luminance = relativeLuminance(colors.surface);
+	if (luminance === null) return null;
 	return luminance > 0.35
 		? { text: '#555555', heading: '#525356', border: '#dbdfe7' }
 		: { text: '#d6d6db', heading: '#f2f2f4', border: '#5c5e66' };
+});
+
+const ON_PRIMARY_DARK = '#26282e';
+
+/**
+ * Text on primary-filled controls (submit, step nav, selected scale buttons)
+ * picks whichever of white or near-black contrasts more with the primary color.
+ */
+const onPrimaryColor = computed(() => {
+	const primary = props.definition.theme.colors?.primary;
+	if (!primary) return null;
+	const luminance = relativeLuminance(primary);
+	if (luminance === null) return null;
+	const darkLuminance = relativeLuminance(ON_PRIMARY_DARK) ?? 0;
+	const whiteContrast = 1.05 / (luminance + 0.05);
+	const darkContrast = (luminance + 0.05) / (darkLuminance + 0.05);
+	return whiteContrast >= darkContrast ? '#ffffff' : ON_PRIMARY_DARK;
 });
 
 const cover = computed(() => props.definition.layout.cover);
@@ -155,6 +177,7 @@ const themeVars = computed(() => {
 		vars['--n8n-form-color-heading'] = autoTextColors.value.heading;
 		vars['--n8n-form-color-border'] = autoTextColors.value.border;
 	}
+	if (onPrimaryColor.value) vars['--n8n-form-color-on-primary'] = onPrimaryColor.value;
 	if (theme.font?.family) vars['--n8n-form-font-family'] = theme.font.family;
 	if (theme.font?.headingFamily) vars['--n8n-form-font-heading'] = theme.font.headingFamily;
 	if (theme.backgroundImageUrl) {
@@ -636,6 +659,7 @@ defineExpose({ runtime });
 	--n8n-form-color-heading: #525356;
 	--n8n-form-color-error: #ea1f30;
 	--n8n-form-color-border: #dbdfe7;
+	--n8n-form-color-on-primary: #ffffff;
 	--n8n-form-font-family: 'Open Sans', -apple-system, blinkmacsystemfont, 'Segoe UI', sans-serif;
 	--n8n-form-font-heading: var(--n8n-form-font-family);
 	--n8n-form-radius: 8px;
@@ -856,7 +880,7 @@ defineExpose({ runtime });
 	font-family: inherit;
 	font-size: 14px;
 	font-weight: 600;
-	color: #ffffff;
+	color: var(--n8n-form-color-on-primary);
 	background: var(--n8n-form-color-primary);
 	border: 0;
 	border-radius: var(--n8n-form-radius);
@@ -884,7 +908,7 @@ defineExpose({ runtime });
 .n8n-form-root--outline .n8n-form-submit:hover:not(:disabled) {
 	filter: none;
 	background: var(--n8n-form-color-primary);
-	color: #ffffff;
+	color: var(--n8n-form-color-on-primary);
 }
 
 .n8n-form-root--outline .n8n-form-spinner {
@@ -896,8 +920,8 @@ defineExpose({ runtime });
 	display: inline-block;
 	width: 16px;
 	height: 16px;
-	border: 2px solid rgb(255 255 255 / 40%);
-	border-top-color: #ffffff;
+	border: 2px solid color-mix(in srgb, var(--n8n-form-color-on-primary) 40%, transparent);
+	border-top-color: var(--n8n-form-color-on-primary);
 	border-radius: 50%;
 	animation: n8n-form-spin 0.8s linear infinite;
 	vertical-align: middle;
@@ -1021,7 +1045,7 @@ defineExpose({ runtime });
 	line-height: 1;
 	width: 36px;
 	height: 32px;
-	color: #ffffff;
+	color: var(--n8n-form-color-on-primary);
 	background: var(--n8n-form-color-primary);
 	border: 0;
 	border-radius: var(--n8n-form-radius);
@@ -1165,10 +1189,11 @@ defineExpose({ runtime });
 	color: var(--n8n-form-color-primary);
 }
 
-.n8n-form-rating-scale .n8n-form-rating-step--active {
+.n8n-form-rating-scale .n8n-form-rating-step--active,
+.n8n-form-yesno .n8n-form-rating-step--active {
 	background: var(--n8n-form-color-primary);
 	border-color: var(--n8n-form-color-primary);
-	color: #ffffff;
+	color: var(--n8n-form-color-on-primary);
 }
 
 .n8n-form-rating-stars {
