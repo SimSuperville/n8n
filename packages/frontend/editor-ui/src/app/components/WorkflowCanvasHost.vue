@@ -15,8 +15,15 @@ const props = withDefaults(
 		initialWorkflow?: IWorkflowDb;
 		/** Execution to display once on open, seeded directly (e.g. an editor hand-off snapshot). */
 		initialExecution?: IExecutionResponse;
+		/** When the loaded workflow has an editable v3 Form Trigger, render the form builder instead of the canvas. */
+		preferFormBuilder?: boolean;
 	}>(),
-	{ refreshKey: 0, initialWorkflow: undefined, initialExecution: undefined },
+	{
+		refreshKey: 0,
+		initialWorkflow: undefined,
+		initialExecution: undefined,
+		preferFormBuilder: false,
+	},
 );
 
 const emit = defineEmits<{
@@ -56,6 +63,7 @@ defineExpose({ requestFitView });
 		:refresh-key="refreshKey"
 		:initial-workflow="initialWorkflow"
 		:initial-execution="initialExecution"
+		:prefer-form-builder="preferFormBuilder"
 		@ready="emit('ready')"
 		@workflow-loaded="(id) => emit('workflow-loaded', id)"
 	/>

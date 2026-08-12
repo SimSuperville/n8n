@@ -187,6 +187,7 @@ provide(InstanceAiEditorCapabilityKey, instanceAiCapability);
 			:refresh-key="refreshKey"
 			:initial-workflow="initialWorkflow"
 			:initial-execution="initialExecution"
+			:prefer-form-builder="true"
 			@workflow-loaded="restoreExecutionResult"
 		/>
 	</div>

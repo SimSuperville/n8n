@@ -1,13 +1,16 @@
 <script lang="ts" setup>
 import { computed, onBeforeUnmount, onMounted, watch } from 'vue';
 import { N8nIcon } from '@n8n/design-system';
+import { safeParseFormDefinition } from '@n8n/form-core';
 import type { IWorkflowDb } from '@/Interface';
 import type { IExecutionResponse } from '@/features/execution/executions/executions.types';
 import { injectStrict } from '@/app/utils/injectStrict';
 import { WorkflowDocumentStoreKey } from '@/app/constants/injectionKeys';
+import { FORM_TRIGGER_NODE_TYPE } from '@/app/constants/nodeTypes';
 import { useWorkflowInitialization } from '@/app/composables/useWorkflowInitialization';
 import MainHeader from '@/app/components/MainHeader/MainHeader.vue';
 import NodeView from '@/app/views/NodeView.vue';
+import FormBuilderView from '@/features/formBuilder/views/FormBuilderView.vue';
 import LogsPanel from '@/features/execution/logs/components/LogsPanel.vue';
 import { canvasEventBus } from '@/features/workflows/canvas/canvas.eventBus';
 import { useCanvasStore } from '@/app/stores/canvas.store';
@@ -24,6 +27,8 @@ const props = defineProps<{
 	initialWorkflow?: IWorkflowDb;
 	/** Execution to display once on open, seeded directly (e.g. an editor hand-off snapshot). */
 	initialExecution?: IExecutionResponse;
+	/** When the loaded workflow has an editable v3 Form Trigger, render the form builder instead of the canvas. */
+	preferFormBuilder?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -124,6 +129,23 @@ function requestFitView() {
 defineExpose({ requestFitView });
 
 const isReady = computed(() => !isLoading.value && !!currentWorkflowDocumentStore.value);
+
+/**
+ * The Form Trigger to open in the embedded form builder: only when the host
+ * opted in, the store is loaded, and the node carries a static, parseable v3
+ * formDefinition (expressions / runtime-generated forms fall back to the canvas).
+ */
+const formBuilderNodeId = computed<string | null>(() => {
+	if (!props.preferFormBuilder) return null;
+	const store = currentWorkflowDocumentStore.value;
+	if (!store) return null;
+	const trigger = store.allNodes.find(
+		(node) => node.type === FORM_TRIGGER_NODE_TYPE && node.typeVersion >= 3,
+	);
+	if (!trigger) return null;
+	const parsed = safeParseFormDefinition(trigger.parameters?.formDefinition ?? {});
+	return parsed.success ? trigger.id : null;
+});
 </script>
 
 <template>
@@ -131,7 +153,13 @@ const isReady = computed(() => !isLoading.value && !!currentWorkflowDocumentStor
 		<template v-if="isReady">
 			<MainHeader :class="$style.header" />
 			<div :class="$style.canvas">
-				<NodeView />
+				<FormBuilderView
+					v-if="formBuilderNodeId"
+					:workflow-id="workflowId"
+					:node-id="formBuilderNodeId"
+					embedded
+				/>
+				<NodeView v-else />
 			</div>
 			<LogsPanel :class="$style.logs" />
 		</template>
