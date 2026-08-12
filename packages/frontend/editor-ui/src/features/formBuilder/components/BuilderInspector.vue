@@ -14,7 +14,6 @@ import {
 	N8nInput,
 	N8nInputLabel,
 	N8nOption,
-	N8nRadioButtons,
 	N8nSelect,
 	N8nSwitch,
 	N8nTabs,
@@ -23,6 +22,7 @@ import {
 
 import { DATA_TABLE_DETAILS } from '@/features/core/dataTable/constants';
 import type { useFormBuilder } from '../composables/useFormBuilder';
+import ImagePicker from './ImagePicker.vue';
 import LogicSection from './LogicSection.vue';
 
 const props = defineProps<{
@@ -92,41 +92,23 @@ const openSections = reactive({
 	theme: true,
 	responses: true,
 	typography: false,
-	images: false,
 });
 
 // --- layout mode (moved here from the top bar) ---
 const telemetry = useTelemetry();
 const toast = useToast();
 
-const layoutModeOptions = [
-	{ label: 'Classic', value: 'classic' },
-	{ label: 'One at a time', value: 'oneAtATime' },
-];
+const isOneAtATime = computed(() => settings.value?.layout.mode === 'oneAtATime');
 
-const layoutMode = computed(() => settings.value?.layout.mode ?? 'classic');
-
-function setLayoutMode(mode: string) {
+function setOneAtATime(enabled: boolean) {
 	if (!settings.value) return;
-	settings.value.layout.mode = mode as 'classic' | 'oneAtATime';
+	const mode = enabled ? 'oneAtATime' : 'classic';
+	settings.value.layout.mode = mode;
 	telemetry.track('User changed form layout mode', { mode });
 }
 
-// --- corner radius (px slider; legacy documents may carry a named preset) ---
-const RADIUS_PRESETS: Record<string, number> = { none: 0, sm: 4, md: 8, lg: 12, pill: 16 };
-
-const radiusPx = computed(() => {
-	const radius = settings.value?.theme.radius;
-	if (typeof radius === 'number') return radius;
-	return RADIUS_PRESETS[radius ?? 'md'] ?? 8;
-});
-
-function setRadius(event: Event) {
-	if (!settings.value) return;
-	settings.value.theme.radius = Number((event.target as HTMLInputElement).value);
-}
-
-// --- WCAG AA contrast checks on the selected colors ---
+// --- WCAG AA contrast check: text follows the card color automatically,
+// so the button (white text on the primary color) is the remaining risk ---
 function relativeLuminance(hex: string): number | null {
 	const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
 	if (!match) return null;
@@ -148,12 +130,6 @@ function contrastRatio(colorA: string, colorB: string): number | null {
 const contrastWarnings = computed<string[]>(() => {
 	const colors = settings.value?.theme.colors ?? {};
 	const warnings: string[] = [];
-	const textOnCard = contrastRatio(colors.text ?? '#555555', colors.surface ?? '#ffffff');
-	if (textOnCard !== null && textOnCard < 4.5) {
-		warnings.push(
-			`Text on the card is ${textOnCard.toFixed(1)}:1 — below the 4.5:1 AA minimum for text`,
-		);
-	}
 	const buttonText = contrastRatio('#ffffff', colors.primary ?? '#ff6d5a');
 	if (buttonText !== null && buttonText < 3) {
 		warnings.push(
@@ -163,47 +139,25 @@ const contrastWarnings = computed<string[]>(() => {
 	return warnings;
 });
 
-// --- image upload (stored as a data URI inside the definition) ---
-const MAX_IMAGE_BYTES = 300 * 1024;
-const imageFileInput = ref<HTMLInputElement | null>(null);
-let pendingImageAssign: ((dataUri: string) => void) | null = null;
-
-function pickImage(assign: (dataUri: string) => void) {
-	pendingImageAssign = assign;
-	imageFileInput.value?.click();
+// Text color follows the card color automatically; changing the card drops any
+// explicit text color a legacy document may carry so the auto contrast engages
+function setSurface(event: Event) {
+	if (!themeColors.value) return;
+	themeColors.value.surface = (event.target as HTMLInputElement).value;
+	themeColors.value.text = undefined;
 }
 
-function onImagePicked(event: Event) {
-	const input = event.target as HTMLInputElement;
-	const file = input.files?.[0];
-	input.value = '';
-	const assign = pendingImageAssign;
-	pendingImageAssign = null;
-	if (!file || !assign) return;
-	if (file.size > MAX_IMAGE_BYTES) {
-		toast.showError(
-			new Error('The image is stored inside the workflow, so it must be under 300 KB'),
-			'Image too large',
-		);
-		return;
-	}
-	const reader = new FileReader();
-	reader.onload = () => {
-		if (typeof reader.result === 'string') assign(reader.result);
-	};
-	reader.readAsDataURL(file);
+// --- images (stored on the theme; uploads become data URIs) ---
+function setLogo(value: string | undefined) {
+	if (settings.value) settings.value.theme.logoUrl = value;
 }
 
-function assignLogo(dataUri: string) {
-	if (settings.value) settings.value.theme.logoUrl = dataUri;
+function setBackgroundImage(value: string | undefined) {
+	if (settings.value) settings.value.theme.backgroundImageUrl = value;
 }
 
-function assignBackground(dataUri: string) {
-	if (settings.value) settings.value.theme.backgroundImageUrl = dataUri;
-}
-
-function assignCover(dataUri: string) {
-	if (layoutCover.value) layoutCover.value.imageUrl = dataUri;
+function setCoverImage(value: string | undefined) {
+	if (layoutCover.value) layoutCover.value.imageUrl = value;
 }
 
 // System font stacks only: the public form runs under a sandbox CSP that
@@ -549,13 +503,15 @@ async function onSyncDataTable() {
 
 			<N8nCollapsiblePanel v-model="openSections.layout" title="Layout">
 				<div :class="$style.sectionBody">
-					<N8nRadioButtons
-						size="small"
-						:model-value="layoutMode"
-						:options="layoutModeOptions"
-						data-test-id="form-builder-layout-mode"
-						@update:model-value="setLayoutMode"
-					/>
+					<div :class="$style.rowInline">
+						<N8nText size="small">One question at a time</N8nText>
+						<N8nSwitch
+							:model-value="isOneAtATime"
+							size="small"
+							data-test-id="form-builder-layout-mode"
+							@update:model-value="setOneAtATime"
+						/>
+					</div>
 				</div>
 			</N8nCollapsiblePanel>
 
@@ -565,16 +521,33 @@ async function onSyncDataTable() {
 						<N8nInputLabel label="Primary color" size="small">
 							<input v-model="themeColors.primary" :class="$style.colorInput" type="color" />
 						</N8nInputLabel>
-						<N8nInputLabel label="Background" size="small">
-							<input v-model="themeColors.background" :class="$style.colorInput" type="color" />
+						<N8nInputLabel
+							label="Card color"
+							size="small"
+							tooltip-text="Text color adapts automatically to stay readable"
+						>
+							<input
+								:value="themeColors.surface"
+								:class="$style.colorInput"
+								type="color"
+								@input="setSurface"
+							/>
 						</N8nInputLabel>
 					</div>
-					<div v-if="themeColors" :class="$style.rowSplit">
-						<N8nInputLabel label="Card color" size="small">
-							<input v-model="themeColors.surface" :class="$style.colorInput" type="color" />
-						</N8nInputLabel>
-						<N8nInputLabel label="Text color" size="small">
-							<input v-model="themeColors.text" :class="$style.colorInput" type="color" />
+					<div v-if="themeColors" :class="$style.row">
+						<N8nInputLabel
+							label="Background"
+							size="small"
+							tooltip-text="Use a color, an image, or both — the image covers the page behind the card"
+						>
+							<div :class="$style.backgroundRow">
+								<input v-model="themeColors.background" :class="$style.colorInput" type="color" />
+								<ImagePicker
+									:model-value="settings.theme.backgroundImageUrl"
+									label="Background image"
+									@update:model-value="setBackgroundImage"
+								/>
+							</div>
 						</N8nInputLabel>
 					</div>
 					<div
@@ -586,21 +559,36 @@ async function onSyncDataTable() {
 						<N8nIcon icon="triangle-alert" size="small" />
 						<N8nText size="xsmall" color="warning">{{ warning }}</N8nText>
 					</div>
-					<div :class="$style.row">
-						<N8nInputLabel label="Corner radius" size="small">
-							<div :class="$style.sliderRow">
-								<input
-									:class="$style.slider"
-									type="range"
-									min="0"
-									max="24"
-									step="1"
-									:value="radiusPx"
-									data-test-id="form-builder-radius-slider"
-									@input="setRadius"
+					<div :class="$style.rowSplit">
+						<N8nInputLabel label="Logo" size="small">
+							<ImagePicker
+								:model-value="settings.theme.logoUrl"
+								label="Logo"
+								@update:model-value="setLogo"
+							/>
+						</N8nInputLabel>
+						<N8nInputLabel v-if="layoutCover" label="Cover image" size="small">
+							<ImagePicker
+								:model-value="layoutCover.imageUrl"
+								label="Cover image"
+								@update:model-value="setCoverImage"
+							/>
+						</N8nInputLabel>
+					</div>
+					<div v-if="layoutCover && layoutCover.imageUrl" :class="$style.row">
+						<N8nInputLabel label="Cover placement" size="small">
+							<N8nSelect
+								:model-value="layoutCover.split ?? 'none'"
+								size="small"
+								@update:model-value="layoutCover.split = $event"
+							>
+								<N8nOption
+									v-for="option in coverPlacementOptions"
+									:key="option.value"
+									:value="option.value"
+									:label="option.label"
 								/>
-								<N8nText size="xsmall" color="text-light">{{ radiusPx }}px</N8nText>
-							</div>
+							</N8nSelect>
 						</N8nInputLabel>
 					</div>
 					<div :class="$style.row">
@@ -662,10 +650,11 @@ async function onSyncDataTable() {
 								:href="dataTableHref"
 								target="_blank"
 								rel="noopener noreferrer"
+								:class="$style.dataTableLink"
 								title="Open data table in a new tab"
 								data-test-id="form-builder-open-data-table"
 							>
-								<N8nIconButton icon="external-link" type="tertiary" size="small" text />
+								<N8nIcon icon="external-link" size="small" />
 							</a>
 						</div>
 						<N8nButton
@@ -722,89 +711,6 @@ async function onSyncDataTable() {
 					</div>
 				</div>
 			</N8nCollapsiblePanel>
-
-			<N8nCollapsiblePanel v-model="openSections.images" title="Images">
-				<div :class="$style.sectionBody">
-					<div :class="$style.row">
-						<N8nInputLabel label="Logo" size="small">
-							<div :class="$style.imageRow">
-								<N8nInput v-model="settings.theme.logoUrl" size="small" placeholder="https://…" />
-								<N8nIconButton
-									icon="upload"
-									type="secondary"
-									size="small"
-									title="Upload an image (max 300 KB)"
-									@click="pickImage(assignLogo)"
-								/>
-							</div>
-						</N8nInputLabel>
-					</div>
-					<div :class="$style.row">
-						<N8nInputLabel
-							label="Background image"
-							size="small"
-							tooltip-text="Shown behind the form card, covering the page"
-						>
-							<div :class="$style.imageRow">
-								<N8nInput
-									v-model="settings.theme.backgroundImageUrl"
-									size="small"
-									placeholder="https://…"
-								/>
-								<N8nIconButton
-									icon="upload"
-									type="secondary"
-									size="small"
-									title="Upload an image (max 300 KB)"
-									@click="pickImage(assignBackground)"
-								/>
-							</div>
-						</N8nInputLabel>
-					</div>
-					<div v-if="layoutCover" :class="$style.row">
-						<N8nInputLabel
-							label="Cover image"
-							size="small"
-							tooltip-text="A featured image shown as a banner above the form or beside it"
-						>
-							<div :class="$style.imageRow">
-								<N8nInput v-model="layoutCover.imageUrl" size="small" placeholder="https://…" />
-								<N8nIconButton
-									icon="upload"
-									type="secondary"
-									size="small"
-									title="Upload an image (max 300 KB)"
-									@click="pickImage(assignCover)"
-								/>
-							</div>
-						</N8nInputLabel>
-					</div>
-					<div v-if="layoutCover && layoutCover.imageUrl" :class="$style.row">
-						<N8nInputLabel label="Cover placement" size="small">
-							<N8nSelect
-								:model-value="layoutCover.split ?? 'none'"
-								size="small"
-								@update:model-value="layoutCover.split = $event"
-							>
-								<N8nOption
-									v-for="option in coverPlacementOptions"
-									:key="option.value"
-									:value="option.value"
-									:label="option.label"
-								/>
-							</N8nSelect>
-						</N8nInputLabel>
-					</div>
-				</div>
-			</N8nCollapsiblePanel>
-
-			<input
-				ref="imageFileInput"
-				type="file"
-				accept="image/*"
-				:class="$style.hiddenFileInput"
-				@change="onImagePicked"
-			/>
 		</template>
 	</div>
 </template>
@@ -871,6 +777,8 @@ async function onSyncDataTable() {
 }
 
 .sectionBody {
+	/* Positioned so ImagePicker panels can anchor to the pane's width */
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	gap: var(--spacing--2xs);
@@ -884,18 +792,7 @@ async function onSyncDataTable() {
 	color: var(--color--warning);
 }
 
-.sliderRow {
-	display: flex;
-	align-items: center;
-	gap: var(--spacing--2xs);
-}
-
-.slider {
-	flex: 1;
-	accent-color: var(--color--primary);
-}
-
-.imageRow {
+.backgroundRow {
 	display: flex;
 	align-items: center;
 	gap: var(--spacing--4xs);
@@ -926,7 +823,19 @@ async function onSyncDataTable() {
 	min-width: 0;
 }
 
-.hiddenFileInput {
-	display: none;
+.dataTableLink {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	border-radius: var(--radius);
+	color: var(--color--text--tint-1);
+	flex-shrink: 0;
+
+	&:hover {
+		color: var(--color--primary);
+		background: var(--color--background--light-2);
+	}
 }
 </style>

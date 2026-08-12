@@ -77,12 +77,31 @@ const radiusValue = computed(() => {
 const containerWidth = computed(() => {
 	switch (props.definition.layout.containerWidth) {
 		case 'narrow':
-			return '400px';
-		case 'wide':
-			return '640px';
-		default:
 			return '480px';
+		case 'wide':
+			return '800px';
+		default:
+			// One-at-a-time is a stage, not a form column — give it room
+			return props.definition.layout.mode === 'oneAtATime' ? '800px' : '640px';
 	}
+});
+
+/**
+ * Text and heading colors follow the card color automatically so they always
+ * contrast; an explicit theme.colors.text (JSON authors) still wins.
+ */
+const autoTextColors = computed(() => {
+	const { colors } = props.definition.theme;
+	if (!colors?.surface || colors.text) return null;
+	const match = /^#?([0-9a-f]{6})$/i.exec(colors.surface.trim());
+	if (!match) return null;
+	const [r, g, b] = [0, 2, 4]
+		.map((offset) => parseInt(match[1].slice(offset, offset + 2), 16) / 255)
+		.map((channel) => (channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4));
+	const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+	return luminance > 0.35
+		? { text: '#555555', heading: '#525356', border: '#dbdfe7' }
+		: { text: '#d6d6db', heading: '#f2f2f4', border: '#5c5e66' };
 });
 
 const cover = computed(() => props.definition.layout.cover);
@@ -126,8 +145,16 @@ const themeVars = computed(() => {
 	if (theme.colors?.primary) vars['--n8n-form-color-primary'] = theme.colors.primary;
 	if (theme.colors?.background) vars['--n8n-form-color-background'] = theme.colors.background;
 	if (theme.colors?.surface) vars['--n8n-form-color-surface'] = theme.colors.surface;
-	if (theme.colors?.text) vars['--n8n-form-color-text'] = theme.colors.text;
+	if (theme.colors?.text) {
+		vars['--n8n-form-color-text'] = theme.colors.text;
+		vars['--n8n-form-color-heading'] = theme.colors.text;
+	}
 	if (theme.colors?.error) vars['--n8n-form-color-error'] = theme.colors.error;
+	if (autoTextColors.value) {
+		vars['--n8n-form-color-text'] = autoTextColors.value.text;
+		vars['--n8n-form-color-heading'] = autoTextColors.value.heading;
+		vars['--n8n-form-color-border'] = autoTextColors.value.border;
+	}
 	if (theme.font?.family) vars['--n8n-form-font-family'] = theme.font.family;
 	if (theme.font?.headingFamily) vars['--n8n-form-font-heading'] = theme.font.headingFamily;
 	if (theme.backgroundImageUrl) {
@@ -283,14 +310,28 @@ function isFormDrag(event: DragEvent): boolean {
 function onFieldsDragOver(event: DragEvent) {
 	if (props.mode !== 'preview' || !isFormDrag(event)) return;
 	event.preventDefault();
-	if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+	if (event.dataTransfer) {
+		// The effect must match the source's effectAllowed or browsers cancel the drop:
+		// palette items are dragged as 'copy', existing fields as 'move'
+		event.dataTransfer.dropEffect = event.dataTransfer.types.includes(FIELD_TYPE_MIME)
+			? 'copy'
+			: 'move';
+	}
 
 	const container = event.currentTarget as HTMLElement;
+	// The open drop zone shifts every later field down; subtract that displacement
+	// so the target index tracks the cursor instead of drifting upward
+	const zone = container.querySelector<HTMLElement>('.n8n-form-drop-zone');
+	const zoneOffset =
+		zone === null
+			? 0
+			: zone.getBoundingClientRect().height + (parseFloat(getComputedStyle(container).rowGap) || 0);
 	const fields = [...container.querySelectorAll<HTMLElement>('[data-element-id]')];
 	let index = fields.length;
 	for (let i = 0; i < fields.length; i++) {
 		const rect = fields[i].getBoundingClientRect();
-		if (event.clientY < rect.top + rect.height / 2) {
+		const top = dropIndex.value !== null && i >= dropIndex.value ? rect.top - zoneOffset : rect.top;
+		if (event.clientY < top + rect.height / 2) {
 			index = i;
 			break;
 		}
@@ -468,6 +509,7 @@ defineExpose({ runtime });
 					name="n8n-form-field-fade"
 					tag="div"
 					class="n8n-form-fields"
+					:class="{ 'n8n-form-fields--preview': mode === 'preview' }"
 					:duration="200"
 					@dragover="onFieldsDragOver"
 					@dragleave="onFieldsDragLeave"
@@ -695,6 +737,11 @@ defineExpose({ runtime });
 	margin-bottom: 24px;
 }
 
+/* Keep a drop target even when the page has no fields yet */
+.n8n-form-fields--preview {
+	min-height: 48px;
+}
+
 .n8n-form-field {
 	border: 0;
 	padding: 0;
@@ -877,7 +924,7 @@ defineExpose({ runtime });
 .n8n-form-root--one-at-a-time .n8n-form-card {
 	display: flex;
 	flex-direction: column;
-	min-height: min(520px, 78vh);
+	min-height: min(660px, 84vh);
 }
 
 .n8n-form-progress {
@@ -1022,8 +1069,11 @@ defineExpose({ runtime });
 .n8n-form-field--selectable {
 	cursor: pointer;
 	border-radius: var(--n8n-form-radius);
-	outline-offset: 4px;
 	position: relative;
+	/* Breathing room inside the selection outline; the negative margin keeps
+		the layout identical to the live form */
+	padding: 12px;
+	margin: -12px;
 }
 
 .n8n-form-field--selectable:hover {
@@ -1037,8 +1087,8 @@ defineExpose({ runtime });
 
 .n8n-form-drag-handle {
 	position: absolute;
-	top: -4px;
-	right: -4px;
+	top: 2px;
+	right: 2px;
 	font-size: 20px;
 	line-height: 1;
 	color: var(--n8n-form-color-border);
