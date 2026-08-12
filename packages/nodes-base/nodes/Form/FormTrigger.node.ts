@@ -3,6 +3,7 @@ import { VersionedNodeType } from 'n8n-workflow';
 
 import { FormTriggerV1 } from './v1/FormTriggerV1.node';
 import { FormTriggerV2 } from './v2/FormTriggerV2.node';
+import { FormTriggerV3 } from './v3/FormTriggerV3.node';
 
 export class FormTrigger extends VersionedNodeType {
 	constructor() {
@@ -25,6 +26,7 @@ export class FormTrigger extends VersionedNodeType {
 			2.4: new FormTriggerV2(baseDescription),
 			2.5: new FormTriggerV2(baseDescription),
 			2.6: new FormTriggerV2(baseDescription),
+			3: new FormTriggerV3(baseDescription),
 		};
 
 		super(nodeVersions, baseDescription);

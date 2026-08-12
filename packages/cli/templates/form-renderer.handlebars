@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="robots" content="noindex, nofollow" />
+		<title>n8n Form</title>
+		<link rel="icon" type="image/png" href="https://n8n.io/favicon.ico" />
+		<link rel="stylesheet" href="/static/form-renderer/style.css" />
+		<style>
+			html,
+			body {
+				margin: 0;
+				padding: 0;
+				height: 100%;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="n8n-form"></div>
+		<script type="application/json" id="n8n-form-payload">{{{ formPayloadJson }}}</script>
+		<script src="/static/form-renderer/forms.bundle.umd.js"></script>
+		<script>
+			window.N8nForms.createFormApp();
+		</script>
+	</body>
+</html>

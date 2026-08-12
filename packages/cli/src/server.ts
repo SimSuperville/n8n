@@ -15,7 +15,7 @@ import { resolve } from 'path';
 
 import { AbstractServer } from '@/abstract-server';
 import { AuthService } from '@/auth/auth.service';
-import { CLI_DIR, EDITOR_UI_DIST_DIR, inE2ETests } from '@/constants';
+import { CLI_DIR, EDITOR_UI_DIST_DIR, FORM_RENDERER_DIST_DIR, inE2ETests } from '@/constants';
 import { ControllerRegistry } from '@/controller.registry';
 import { CredentialsOverwrites } from '@/credentials-overwrites';
 import { MessageEventBus } from '@/eventbus/message-event-bus/message-event-bus';
@@ -323,6 +323,10 @@ export class Server extends AbstractServer {
 		const maxAge = Time.days.toMilliseconds;
 		const cacheOptions = inE2ETests || inDevelopment ? {} : { maxAge };
 		const { staticCacheDir } = Container.get(InstanceSettings);
+
+		// Assets of the public form renderer (@n8n/forms); served regardless of UI availability
+		// because public forms also work on UI-less instances
+		this.app.use('/static/form-renderer', express.static(FORM_RENDERER_DIST_DIR, cacheOptions));
 
 		// Protect type files with authentication regardless of UI availability
 		const authService = Container.get(AuthService);

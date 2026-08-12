@@ -944,6 +944,7 @@
     "@n8n/config": "workspace:*",
     "@n8n/di": "workspace:*",
     "@n8n/errors": "workspace:*",
+    "@n8n/form-core": "workspace:*",
     "@n8n/imap": "workspace:*",
     "@n8n/utils": "workspace:*",
     "@thednp/dommatrix": "^2.0.12",

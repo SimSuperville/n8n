@@ -1,0 +1,61 @@
+{
+	"name": "@n8n/forms",
+	"version": "0.1.0",
+	"description": "n8n form renderer: renders a form definition as the public form page and as the builder's live preview",
+	"scripts": {
+		"clean": "rimraf dist .turbo",
+		"build": "pnpm build:vite && pnpm build:bundle",
+		"build:unchecked": "pnpm run build",
+		"build:vite": "cross-env vite build",
+		"build:bundle": "cross-env INCLUDE_VUE=true vite build",
+		"preview": "vite preview",
+		"test:dev": "vitest",
+		"test": "vitest run",
+		"typecheck": "vue-tsc --noEmit",
+		"lint": "eslint src --quiet",
+		"lint:fix": "eslint src --fix",
+		"format": "biome format --write src",
+		"format:check": "biome ci src"
+	},
+	"types": "./dist/src/index.d.ts",
+	"main": "./dist/forms.umd.js",
+	"module": "./dist/forms.es.js",
+	"exports": {
+		".": {
+			"types": "./dist/src/index.d.ts",
+			"import": "./dist/forms.es.js",
+			"require": "./dist/forms.umd.js"
+		},
+		"./style.css": {
+			"import": "./dist/style.css",
+			"require": "./dist/style.css"
+		},
+		"./*": {
+			"import": "./*",
+			"require": "./*"
+		}
+	},
+	"dependencies": {
+		"@n8n/form-core": "workspace:*",
+		"vue": "catalog:frontend"
+	},
+	"devDependencies": {
+		"@n8n/eslint-config": "workspace:*",
+		"@n8n/typescript-config": "workspace:*",
+		"@n8n/vitest-config": "workspace:*",
+		"@vitejs/plugin-vue": "catalog:frontend",
+		"@vitest/coverage-v8": "catalog:",
+		"@vue/test-utils": "catalog:frontend",
+		"cross-env": "^7.0.3",
+		"typescript": "catalog:",
+		"vite": "catalog:",
+		"vite-plugin-dts": "catalog:",
+		"vitest": "catalog:",
+		"vue-tsc": "catalog:frontend"
+	},
+	"files": [
+		"README.md",
+		"dist"
+	],
+	"license": "LicenseRef-n8n-sustainable-use"
+}

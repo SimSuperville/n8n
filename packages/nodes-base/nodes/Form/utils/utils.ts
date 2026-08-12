@@ -771,7 +771,7 @@ function clearFormOAuthToken(res: Response, req: Request, resourceUrl: string): 
  * (302 to `/signin` on GET, 401 on POST) and returns `null` — the caller
  * must abort with `noWebhookResponse`.
  */
-async function authenticateFormUserOrRespond(
+export async function authenticateFormUserOrRespond(
 	context: IWebhookFunctions,
 	oauth2Enabled: boolean = false,
 ): Promise<{ user: IUser; token: string | null } | null> {

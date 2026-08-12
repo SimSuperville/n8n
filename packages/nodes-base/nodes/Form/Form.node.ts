@@ -1,5 +1,6 @@
 import type {
 	FormFieldsParameter,
+	IDataObject,
 	IExecuteFunctions,
 	INodeExecutionData,
 	INodeProperties,
@@ -33,6 +34,12 @@ import {
 	prepareFormReturnItem,
 	validateFormPageAuth,
 } from './utils/utils';
+import { formDefinitionProperty } from './v3/form-definition-property';
+import {
+	handleFormPageSubmissionV3,
+	renderFormCompletionV3,
+	renderFormNodeV3,
+} from './v3/form-node-v3';
 
 const waitTimeProperties: INodeProperties[] = [
 	{
@@ -103,6 +110,33 @@ export const formFieldsProperties: INodeProperties[] = [
 	},
 ];
 
+// Legacy (< v3) field definition properties, clamped so they hide on v3 nodes.
+// `formFieldsProperties` itself stays untouched — sendAndWait reuses it with
+// its own node version numbering.
+const legacyFormFieldsProperties: INodeProperties[] = formFieldsProperties.map((property) => {
+	const show = property.displayOptions?.show ?? {};
+	const versionConditions = show['@version'] as Array<{ _cnd: IDataObject }> | undefined;
+	if (versionConditions === undefined) {
+		return {
+			...property,
+			displayOptions: {
+				...property.displayOptions,
+				show: { ...show, '@version': [{ _cnd: { lt: 3 } }] },
+			},
+		};
+	}
+	if (versionConditions.length === 1 && versionConditions[0]._cnd?.gte === 2.5) {
+		return {
+			...property,
+			displayOptions: {
+				...property.displayOptions,
+				show: { ...show, '@version': [{ _cnd: { between: { from: 2.5, to: 2.99 } } }] },
+			},
+		};
+	}
+	return property;
+});
+
 const pageProperties = updateDisplayOptions(
 	{
 		show: {
@@ -110,7 +144,11 @@ const pageProperties = updateDisplayOptions(
 		},
 	},
 	[
-		...formFieldsProperties,
+		...legacyFormFieldsProperties,
+		{
+			...formDefinitionProperty,
+			displayOptions: { show: { '@version': [{ _cnd: { gte: 3 } }] } },
+		},
 		...waitTimeProperties,
 		{
 			displayName: 'Options',
@@ -118,6 +156,7 @@ const pageProperties = updateDisplayOptions(
 			type: 'collection',
 			placeholder: 'Add option',
 			default: {},
+			displayOptions: { show: { '@version': [{ _cnd: { lt: 3 } }] } },
 			options: [
 				{ ...formTitle, required: false },
 				formDescription,
@@ -137,6 +176,22 @@ const pageProperties = updateDisplayOptions(
 					},
 					default: cssVariables.trim(),
 					description: 'Override default styling of the public form interface with CSS',
+				},
+			],
+		},
+		{
+			displayName: 'Options',
+			name: 'options',
+			type: 'collection',
+			placeholder: 'Add option',
+			default: {},
+			displayOptions: { show: { '@version': [{ _cnd: { gte: 3 } }] } },
+			options: [
+				{
+					displayName: 'Button Label',
+					name: 'buttonLabel',
+					type: 'string',
+					default: 'Submit',
 				},
 			],
 		},
@@ -290,7 +345,7 @@ export class Form extends Node {
 		group: ['input'],
 		// since trigger and node are sharing descriptions and logic we need to sync the versions
 		// and keep them aligned in both nodes
-		version: [1, 2.3, 2.4, 2.5],
+		version: [1, 2.3, 2.4, 2.5, 3],
 		description: 'Generate webforms in n8n and pass their responses to the workflow',
 		defaults: {
 			name: 'Form',
@@ -379,6 +434,27 @@ export class Form extends Node {
 		const mode = context.evaluateExpression(`{{ ${triggerRef}.first().json.formMode }}`) as
 			| 'test'
 			| 'production';
+
+		// v3 pages store a formDefinition and use the SPA renderer with server-side validation
+		if (context.getNode().typeVersion >= 3) {
+			const method3 = context.getRequestObject().method;
+			if (operation === 'completion' && method3 === 'GET') {
+				return await renderFormCompletionV3(context, res, trigger, authResult.authedUser);
+			}
+			if (operation === 'completion' && method3 === 'POST') {
+				return {
+					workflowData: [context.evaluateExpression('{{ $input.all() }}') as INodeExecutionData[]],
+				};
+			}
+			if (method3 === 'GET') {
+				return await renderFormNodeV3(context, res, trigger, mode, authResult.authedUser);
+			}
+			let useTimezone = context.evaluateExpression(
+				`{{ ${triggerRef}.params.options?.useWorkflowTimezone }}`,
+			) as boolean | undefined;
+			if (useTimezone === undefined) useTimezone = true;
+			return await handleFormPageSubmissionV3(context, res, mode, useTimezone, userForOutput);
+		}
 
 		const defineForm = context.getNodeParameter('defineForm', false) as string;
 

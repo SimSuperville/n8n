@@ -1,0 +1,20 @@
+{
+	"extends": "@n8n/typescript-config/tsconfig.common.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"target": "esnext",
+		"module": "esnext",
+		"moduleResolution": "bundler",
+		"allowJs": true,
+		"importHelpers": true,
+		"incremental": false,
+		"allowSyntheticDefaultImports": true,
+		"resolveJsonModule": true,
+		"types": ["vitest/globals"],
+		"paths": {
+			"@/*": ["./src/*"]
+		},
+		"lib": ["esnext", "dom", "dom.iterable", "scripthost"]
+	},
+	"include": ["src/**/*.ts", "src/**/*.vue"]
+}

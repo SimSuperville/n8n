@@ -118,6 +118,15 @@ export class WaitingForms extends WaitingWebhooks {
 			);
 
 			if (!completionPage) {
+				// The v3 SPA renderer fetches the completion as JSON
+				if (req.headers.accept?.includes('application/json')) {
+					res.json({
+						kind: 'completion',
+						title: 'Form Submitted',
+						message: 'Your response has been recorded',
+					});
+					return { noWebhookResponse: true };
+				}
 				if (!isFormHtmlSandboxingDisabled()) {
 					res.setHeader('Content-Security-Policy', getHtmlSandboxCSP());
 				}
