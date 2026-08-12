@@ -15,16 +15,20 @@ const props = withDefaults(
 		submitting?: boolean;
 		/** 'preview' disables real submission side effects (builder canvas) */
 		mode?: 'live' | 'preview';
+		/** Builder preview: id of the currently selected element */
+		selectedElementId?: string | null;
 	}>(),
 	{
 		buttonLabel: 'Submit',
 		appendAttribution: true,
 		mode: 'live',
+		selectedElementId: null,
 	},
 );
 
 const emit = defineEmits<{
 	submit: [formData: FormData];
+	elementSelect: [elementId: string];
 }>();
 
 const runtime = useFormRuntime({
@@ -88,8 +92,19 @@ const themeVars = computed(() => {
 	return vars;
 });
 
+// In the builder preview, hidden fields stay visible so they can be selected;
+// logic-hidden elements still disappear to keep the logic testable live.
+const previewElements = computed(() =>
+	props.mode === 'preview'
+		? props.definition.page.elements.filter(
+				(element) => !runtime.hiddenElementIds.value.has(element.id),
+			)
+		: runtime.visibleElements.value,
+);
+
 async function onSubmit() {
 	if (props.submitting) return;
+	if (props.mode === 'preview') return;
 	if (!runtime.validate()) {
 		await nextTick();
 		summaryElement.value?.focus();
@@ -138,12 +153,15 @@ defineExpose({ runtime });
 
 			<TransitionGroup name="n8n-form-field-fade" tag="div" class="n8n-form-fields">
 				<FieldControl
-					v-for="element in runtime.visibleElements.value"
+					v-for="element in previewElements"
 					:key="element.id"
 					:element="element"
 					:value="runtime.values[element.id]"
 					:error="runtime.errors.value[element.id]"
+					:selectable="mode === 'preview'"
+					:selected="selectedElementId === element.id"
 					@update="runtime.setValue(element.id, $event)"
+					@select="emit('elementSelect', element.id)"
 				/>
 			</TransitionGroup>
 
@@ -386,6 +404,21 @@ defineExpose({ runtime });
 .n8n-form-attribution a {
 	color: var(--n8n-form-color-primary);
 	text-decoration: none;
+}
+
+.n8n-form-field--selectable {
+	cursor: pointer;
+	border-radius: var(--n8n-form-radius);
+	outline-offset: 4px;
+}
+
+.n8n-form-field--selectable:hover {
+	outline: 1px dashed var(--n8n-form-color-primary);
+}
+
+.n8n-form-field--selected,
+.n8n-form-field--selected:hover {
+	outline: 2px solid var(--n8n-form-color-primary);
 }
 
 .n8n-form-field-fade-enter-active,

@@ -6,11 +6,25 @@ const props = defineProps<{
 	element: FormElement;
 	value: unknown;
 	error?: string;
+	/** Builder preview: renders a selection affordance and emits select on click */
+	selectable?: boolean;
+	selected?: boolean;
 }>();
 
 const emit = defineEmits<{
 	update: [value: unknown];
+	select: [];
 }>();
+
+const fieldClasses = computed(() => ({
+	'n8n-form-field': true,
+	'n8n-form-field--selectable': props.selectable === true,
+	'n8n-form-field--selected': props.selected === true,
+}));
+
+function onFieldClick() {
+	if (props.selectable) emit('select');
+}
 
 const inputId = computed(() => `n8n-form-el-${props.element.id}`);
 const descriptionId = computed(() => `${inputId.value}-description`);
@@ -75,18 +89,35 @@ function onFiles(event: Event) {
 </script>
 
 <template>
-	<div v-if="element.type === 'hidden'" class="n8n-form-field n8n-form-field--hidden" hidden></div>
+	<div
+		v-if="element.type === 'hidden'"
+		:class="fieldClasses"
+		class="n8n-form-field--hidden"
+		:data-element-id="element.id"
+		:hidden="!selectable"
+		@click="onFieldClick"
+	>
+		<p v-if="selectable" class="n8n-form-description">Hidden field: {{ element.label }}</p>
+	</div>
 
-	<div v-else-if="element.type === 'html'" class="n8n-form-field n8n-form-field--html">
+	<div
+		v-else-if="element.type === 'html'"
+		:class="fieldClasses"
+		class="n8n-form-field--html"
+		:data-element-id="element.id"
+		@click="onFieldClick"
+	>
 		<!-- eslint-disable-next-line vue/no-v-html -- server-sanitized author HTML -->
 		<div v-html="(config.html as string) ?? ''"></div>
 	</div>
 
 	<fieldset
 		v-else-if="isChoiceGroup"
-		class="n8n-form-field"
+		:class="fieldClasses"
+		:data-element-id="element.id"
 		:aria-describedby="describedBy"
 		:aria-invalid="error ? true : undefined"
+		@click="onFieldClick"
 	>
 		<legend class="n8n-form-label">
 			{{ element.label }}<span v-if="element.required" class="n8n-form-required">*</span>
@@ -117,7 +148,7 @@ function onFiles(event: Event) {
 		<p v-if="error" :id="errorId" class="n8n-form-error" role="alert">{{ error }}</p>
 	</fieldset>
 
-	<div v-else class="n8n-form-field">
+	<div v-else :class="fieldClasses" :data-element-id="element.id" @click="onFieldClick">
 		<label class="n8n-form-label" :for="inputId">
 			{{ element.label }}<span v-if="element.required" class="n8n-form-required">*</span>
 		</label>

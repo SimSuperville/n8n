@@ -109,6 +109,8 @@ const CompareCollectionView = async () =>
 	await import('@/features/ai/evaluation.ee/views/CompareCollectionView.vue');
 const EvaluationRootView = async () =>
 	await import('@/features/ai/evaluation.ee/views/EvaluationsRootView.vue');
+const FormBuilderView = async () =>
+	await import('@/features/formBuilder/views/FormBuilderView.vue');
 const SettingsAIView = async () => await import('@/features/ai/assistant/views/SettingsAIView.vue');
 const SettingsAiGatewayView = async () =>
 	await import('@/features/ai/gateway/views/SettingsAiGatewayView.vue');
@@ -168,6 +170,8 @@ const allowResourceCenterRoute = (
 		next({ name: VIEWS.HOMEPAGE });
 	}
 };
+
+import { FORM_BUILDER_VIEW } from '@/features/formBuilder/constants';
 
 export const routes: RouteRecordRaw[] = [
 	{
@@ -381,6 +385,17 @@ export const routes: RouteRecordRaw[] = [
 				},
 			},
 		],
+	},
+	{
+		path: '/workflow/:workflowId/form-builder/:nodeId',
+		name: FORM_BUILDER_VIEW,
+		component: FormBuilderView,
+		props: true,
+		meta: {
+			layout: 'workflow',
+			keepWorkflowAlive: true,
+			middleware: ['authenticated'],
+		},
 	},
 	{
 		path: '/workflow/:workflowId/evaluation',

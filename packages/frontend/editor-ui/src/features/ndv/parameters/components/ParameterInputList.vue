@@ -35,6 +35,7 @@ import { useI18n } from '@n8n/i18n';
 import AssignmentCollection from './AssignmentCollection/AssignmentCollection.vue';
 import ButtonParameter from './ButtonParameter/ButtonParameter.vue';
 import FilterConditions from './FilterConditions/FilterConditions.vue';
+import FormDefinitionParameter from './FormDefinitionParameter.vue';
 import ImportCurlParameter from './ImportCurlParameter.vue';
 import MultipleParameter from './MultipleParameter.vue';
 import ParameterInputFull from './ParameterInputFull.vue';
@@ -970,6 +971,14 @@ watch(
 					@click="deleteOption(item.parameter.name)"
 				></N8nIconButton>
 			</div>
+			<FormDefinitionParameter
+				v-else-if="item.parameter.name === 'formDefinition'"
+				:path="item.path"
+				:value="getParameterValue<string>(item.parameter.name) ?? ''"
+				:node="node"
+				:is-read-only="isReadOnly"
+				@value-changed="valueChanged"
+			/>
 			<ResourceMapper
 				v-else-if="item.parameter.type === 'resourceMapper'"
 				:key="node?.name"

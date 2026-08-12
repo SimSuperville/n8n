@@ -48,6 +48,8 @@
     "@n8n/composables": "workspace:*",
     "@n8n/constants": "workspace:*",
     "@n8n/design-system": "workspace:*",
+    "@n8n/form-core": "workspace:*",
+    "@n8n/forms": "workspace:*",
     "@n8n/frontend-constants": "workspace:*",
     "@n8n/frontend-module-sdk": "workspace:*",
     "@n8n/frontend-utils": "workspace:*",
@@ -127,8 +129,8 @@
     "web-tree-sitter": "0.24.3",
     "xss": "catalog:",
     "yaml": "catalog:",
-    "zod": "catalog:",
-    "z-vue-scan": "^0.0.35"
+    "z-vue-scan": "^0.0.35",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@codecov/vite-plugin": "^1.9.1",

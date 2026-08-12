@@ -32,6 +32,8 @@ const alias = [
 		replacement: resolve(__dirname, 'vite/expression-runtime-stub.ts'),
 	},
 	// Ensure bare imports resolve to sources (not dist)
+	{ find: /^@n8n\/forms$/, replacement: resolve(packagesDir, 'frontend', '@n8n', 'forms', 'src', 'index.ts') },
+	{ find: /^@n8n\/forms(.+)$/, replacement: resolve(packagesDir, 'frontend', '@n8n', 'forms', 'src$1') },
 	{ find: '@n8n/i18n', replacement: resolve(packagesDir, 'frontend', '@n8n', 'i18n', 'src') },
 	{ find: '@n8n/chat-hub', replacement: resolve(packagesDir, '@n8n', 'chat-hub', 'src') },
 	{ find: '@n8n/tournament', replacement: resolve(packagesDir, '@n8n', 'tournament', 'src') },
